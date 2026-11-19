@@ -1,0 +1,115 @@
+﻿{
+  "_comment": "Paste this array into mllm.tools when starting the Agora Conversational AI agent. Also set advanced_features.enable_tools = true. Base URL must be publicly reachable OR you run the agent locally against a tunnel.",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "getGuestContext",
+        "description": "Look up the room and the in-house guest in it: name, tier, rate, checkout date, comps already given, and any open department tasks on that room. Always call this first when the manager names a room.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "room_number": { "type": "string", "description": "Room number, e.g. 412" }
+          },
+          "required": ["room_number"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "findAvailableRooms",
+        "description": "List vacant rooms in the requested category, split into matches on the requested floor, same-category rooms on other floors, and upgrade options. Returns empty lists when nothing is free - report that honestly.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "category": { "type": "string", "enum": ["deluxe", "premier", "suite"] },
+            "floor": { "type": "integer", "description": "Preferred floor, e.g. 4. Omit if the manager does not care." }
+          },
+          "required": ["category"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "getPolicy",
+        "description": "Search the hotel operations policy manual. Use before any compensation, upgrade, room move or escalation decision. Never state a rupee limit from memory.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "topic": { "type": "string", "description": "e.g. 'comp limit for gold guest', 'room move rule', 'escalation'" }
+          },
+          "required": ["topic"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "moveRoom",
+        "description": "Move an in-house guest to a vacant room. Sets the old room to out_of_service. Fails if the target room is not vacant - read available_now and retry with a valid room, or ask the manager.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "from_room": { "type": "string" },
+            "to_room": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["guest_id", "from_room", "to_room", "reason"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "createDepartmentTask",
+        "description": "Raise a work order for housekeeping or maintenance with an SLA clock.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "department": { "type": "string", "enum": ["housekeeping", "maintenance", "front_desk", "security"] },
+            "location": { "type": "string", "description": "Room number or area" },
+            "priority": { "type": "string", "enum": ["emergency", "high", "medium", "low"] },
+            "description": { "type": "string" }
+          },
+          "required": ["department", "location", "priority", "description"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "applyComp",
+        "description": "Record a guest compensation in INR. The server enforces the tier ceiling: if it returns APPROVAL_REQUIRED, stop and ask the duty manager to approve explicitly, then call again with approved_by set to their name.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "amount_inr": { "type": "integer" },
+            "reason": { "type": "string" },
+            "approved_by": { "type": "string", "description": "Only set after the manager has verbally approved an amount above the ceiling." }
+          },
+          "required": ["guest_id", "amount_inr", "reason"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "scheduleFollowup",
+        "description": "Set a reminder to verify something later, e.g. check that a repair is done.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "room_no": { "type": "string" },
+            "minutes": { "type": "integer" },
+            "note": { "type": "string" }
+          },
+          "required": ["room_no", "minutes", "note"]
+        }
+      }
+    }
+  ]
+}

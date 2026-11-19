@@ -1,0 +1,578 @@
+﻿"""The 14 P0 tools.
+
+Every tool returns the same envelope (docs/SPEC.md Â§4):
+    {ok, status, message, data, hints}
+
+`message` is written for speech. `data` is for the console and the model's
+reasoning. Failures always carry a next step, because that is what lets the agent
+recover in one turn instead of apologising.
+"""
+from __future__ import annotations
+
+import json
+import re
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from typing import Any
+
+from . import policy
+from .clock import now as clock_now
+from .db import connect, now_iso
+
+CATEGORY_RANK = {"deluxe": 1, "premier": 2, "suite": 3}
+SLA_MINUTES = {"emergency": 15, "high": 30, "medium": 120, "low": 240}
+ROOM_STATUSES = {"vacant", "occupied", "blocked", "out_of_service"}
+TASK_STATUSES = {"open", "in_progress", "done", "cancelled"}
+
+
+# --- envelope --------------------------------------------------------
+
+def ok(message: str, data: dict | None = None, status: str = "DONE",
+       hints: dict | None = None) -> dict:
+    return {"ok": True, "status": status, "message": message,
+            "data": data or {}, "hints": hints or {}}
+
+
+def fail(status: str, message: str, data: dict | None = None,
+         hints: dict | None = None) -> dict:
+    return {"ok": False, "status": status, "message": message,
+            "data": data or {}, "hints": hints or {}}
+
+
+@contextmanager
+def db():
+    conn = connect()
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _audit(conn, action: str, entity: str | None, entity_id: str | None,
+           detail: dict, actor: str = "agent") -> None:
+    conn.execute(
+        "INSERT INTO audit (created_at, actor, action, entity, entity_id, detail_json) "
+        "VALUES (?,?,?,?,?,?)",
+        (now_iso(), actor, action, entity, entity_id, json.dumps(detail)),
+    )
+
+
+def _rows(cur) -> list[dict[str, Any]]:
+    return [dict(r) for r in cur.fetchall()]
+
+
+def _minutes_until(iso_ts: str) -> int:
+    try:
+        return int((datetime.fromisoformat(iso_ts) - datetime.now()).total_seconds() // 60)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _guest_or_none(conn, room_no: str):
+    return conn.execute(
+        """SELECT r.res_id, r.guest_id, r.departure_date, g.name, g.tier, g.phone
+           FROM reservations r JOIN guests g ON g.guest_id = r.guest_id
+           WHERE r.room_no = ? AND r.status = 'in_house'""",
+        (room_no,),
+    ).fetchone()
+
+
+# --- 1..7 read tools -------------------------------------------------
+
+def getShiftSummary(scope: str = "shift") -> dict:
+    """What happened this shift, what is still open, what is about to breach."""
+    with db() as conn:
+        moves = _rows(conn.execute(
+            "SELECT created_at, guest_id, from_room, to_room, reason FROM moves "
+            "ORDER BY id DESC LIMIT 5"))
+        comps = _rows(conn.execute(
+            "SELECT c.amount_inr, c.approved_by, g.name FROM comps c "
+            "JOIN guests g ON g.guest_id = c.guest_id ORDER BY c.comp_id DESC LIMIT 5"))
+        comp_total = conn.execute("SELECT COALESCE(SUM(amount_inr),0) s FROM comps").fetchone()["s"]
+        tasks = _rows(conn.execute(
+            "SELECT task_id, department, location, priority, description, sla_due "
+            "FROM tasks WHERE status IN ('open','in_progress')"))
+        followups = _rows(conn.execute(
+            "SELECT room_no, due_at, note FROM followups WHERE status = 'pending' LIMIT 5"))
+        oos = _rows(conn.execute(
+            "SELECT room_no FROM rooms WHERE status = 'out_of_service'"))
+        total = conn.execute("SELECT COUNT(*) c FROM rooms").fetchone()["c"]
+        occupied = conn.execute(
+            "SELECT COUNT(*) c FROM rooms WHERE status = 'occupied'").fetchone()["c"]
+
+    for t in tasks:
+        t["minutes_to_sla"] = _minutes_until(t["sla_due"])
+    tasks.sort(key=lambda t: t["minutes_to_sla"])
+    at_risk = [t for t in tasks if t["minutes_to_sla"] <= 30]
+
+    parts = []
+    if moves:
+        parts.append(f"{len(moves)} room move{'s' if len(moves) > 1 else ''} this shift")
+    if comps:
+        parts.append(f"{len(comps)} compensation{'s' if len(comps) > 1 else ''} totalling {comp_total} rupees")
+    if at_risk:
+        first = at_risk[0]
+        parts.append(f"{len(at_risk)} task{'s' if len(at_risk) > 1 else ''} close to SLA breach, "
+                     f"{first['department']} on {first['location']} in {first['minutes_to_sla']} minutes")
+    if oos:
+        parts.append("out of service: " + ", ".join(r["room_no"] for r in oos))
+    if followups:
+        parts.append(f"{len(followups)} follow-up{'s' if len(followups) > 1 else ''} pending")
+
+    message = ("Nothing open. The property is quiet." if not parts
+               else "; ".join(parts) + ".")
+
+    return ok(message, {
+        "occupancy_pct": round(occupied / total * 100, 1) if total else 0,
+        "moves": moves, "comps": comps, "comp_total_inr": comp_total,
+        "tasks": tasks[:6], "tasks_at_risk": len(at_risk),
+        "followups": followups, "out_of_service": [r["room_no"] for r in oos],
+    })
+
+
+def getRoom(room_no: str) -> dict:
+    with db() as conn:
+        room = conn.execute("SELECT * FROM rooms WHERE room_no = ?",
+                            (str(room_no).strip(),)).fetchone()
+        if room is None:
+            return fail("NOT_FOUND", f"No room called {room_no} in this property.",
+                        hints={"next": ["findAvailableRooms"]})
+        guest = _guest_or_none(conn, room["room_no"])
+    return ok(
+        f"Room {room['room_no']}, {room['category']} on floor {room['floor']}, "
+        f"{room['status'].replace('_', ' ')}.",
+        {"room": dict(room),
+         "guest": {"guest_id": guest["guest_id"], "name": guest["name"], "tier": guest["tier"]}
+         if guest else None},
+    )
+
+
+def findAvailableRooms(category: str, floor: int | None = None,
+                         features: str | None = None) -> dict:
+    category = str(category).strip().lower()
+    if category not in CATEGORY_RANK:
+        return fail("ERROR", f"I do not have a room category called {category}.",
+                    hints={"next": ["findAvailableRooms"], "valid": list(CATEGORY_RANK)})
+
+    with db() as conn:
+        vacant = _rows(conn.execute(
+            "SELECT room_no, floor, category, rate_inr, features FROM rooms "
+            "WHERE status = 'vacant' ORDER BY floor, room_no"))
+        total = conn.execute("SELECT COUNT(*) c FROM rooms").fetchone()["c"]
+        occupied = conn.execute(
+            "SELECT COUNT(*) c FROM rooms WHERE status = 'occupied'").fetchone()["c"]
+
+    if features:
+        needle = str(features).lower()
+        vacant = [r for r in vacant if needle in r["features"].lower()]
+
+    same = [r for r in vacant if r["category"] == category]
+    upgrades = [r for r in vacant if CATEGORY_RANK[r["category"]] > CATEGORY_RANK[category]]
+
+    on_floor, elsewhere = [], same
+    if floor is not None:
+        try:
+            wanted = int(floor)
+        except (TypeError, ValueError):
+            wanted = None
+        if wanted is not None:
+            on_floor = [r for r in same if r["floor"] == wanted]
+            elsewhere = sorted([r for r in same if r["floor"] != wanted],
+                               key=lambda r: abs(r["floor"] - wanted))
+
+    if not same and not upgrades:
+        return fail("UNAVAILABLE",
+                    f"Nothing free in {category} or above right now.",
+                    {"occupancy_pct": round(occupied / total * 100, 1) if total else 0},
+                    hints={"next": ["findAvailableRooms", "getArrivals"]})
+
+    if floor is not None and not on_floor:
+        message = (f"Nothing free in {category} on floor {floor}. "
+                   f"{elsewhere[0]['room_no']} is the nearest, on floor {elsewhere[0]['floor']}.")
+    else:
+        first = (on_floor or elsewhere)[0]
+        message = f"{first['room_no']} is free in {category}, floor {first['floor']}."
+
+    return ok(message, {
+        "requested_category": category,
+        "matches_on_requested_floor": on_floor[:3],
+        "same_category_elsewhere": elsewhere[:3],
+        "upgrade_options": sorted(upgrades, key=lambda r: r["rate_inr"])[:2],
+        "occupancy_pct": round(occupied / total * 100, 1) if total else 0,
+    })
+
+
+def setRoomStatus(room_no: str, status: str, reason: str) -> dict:
+    status = str(status).strip().lower()
+    if status not in ROOM_STATUSES:
+        return fail("ERROR", f"{status} is not a room status I can set.",
+                    hints={"valid": sorted(ROOM_STATUSES)})
+
+    with db() as conn:
+        room = conn.execute("SELECT * FROM rooms WHERE room_no = ?",
+                            (str(room_no).strip(),)).fetchone()
+        if room is None:
+            return fail("NOT_FOUND", f"No room called {room_no}.")
+
+        if status == "vacant":
+            open_tasks = _rows(conn.execute(
+                "SELECT task_id FROM tasks WHERE location = ? AND status IN ('open','in_progress')",
+                (room["room_no"],)))
+            if open_tasks:
+                return fail("CONFLICT",
+                            f"{room['room_no']} still has an open defect task, so it cannot go back on sale.",
+                            {"open_task_ids": [t["task_id"] for t in open_tasks]},
+                            hints={"next": ["updateTask", "setRoomStatus"]})
+
+        conn.execute("UPDATE rooms SET status = ?, note = ? WHERE room_no = ?",
+                     (status, reason, room["room_no"]))
+        _audit(conn, "room_status", "room", room["room_no"],
+               {"from": room["status"], "to": status, "reason": reason})
+        return ok(f"{room['room_no']} is now {status.replace('_', ' ')}.",
+                  {"room_no": room["room_no"], "from": room["status"], "to": status})
+
+
+def getGuestContext(room_no: str) -> dict:
+    with db() as conn:
+        room = conn.execute("SELECT * FROM rooms WHERE room_no = ?",
+                            (str(room_no).strip(),)).fetchone()
+        if room is None:
+            return fail("NOT_FOUND", f"No room called {room_no}.")
+
+        res = _guest_or_none(conn, room["room_no"])
+        if res is None:
+            return ok(f"{room['room_no']} has no guest in house.",
+                      {"room": dict(room), "guest": None})
+
+        comps = conn.execute(
+            "SELECT COALESCE(SUM(amount_inr),0) s FROM comps WHERE guest_id = ?",
+            (res["guest_id"],)).fetchone()["s"]
+        past = conn.execute(
+            "SELECT COUNT(*) c FROM reservations WHERE guest_id = ?", (res["guest_id"],)
+        ).fetchone()["c"]
+        tasks = _rows(conn.execute(
+            "SELECT task_id, department, priority, description FROM tasks "
+            "WHERE location = ? AND status IN ('open','in_progress')", (room["room_no"],)))
+
+    ceiling = policy.tier_ceiling(res["tier"])
+
+    return ok(
+        f"{res['name']}, {res['tier']} tier, in {room['room_no']} at {room['rate_inr']} rupees a night "
+        f"until {res['departure_date']}.",
+        {"room": dict(room),
+         "guest": {
+             "guest_id": res["guest_id"], "name": res["name"], "tier": res["tier"],
+             "phone": res["phone"], "checked_out_on": res["departure_date"],
+             "rate_inr": room["rate_inr"], "stays_to_date": past,
+             "comps_to_date_inr": comps,
+             "comp_ceiling_inr": ceiling["limit_inr"], "ceiling_rule": ceiling["rule_code"],
+         },
+         "open_tasks": tasks},
+    )
+
+
+def searchGuest(query: str) -> dict:
+    q = f"%{str(query).strip()}%"
+    with db() as conn:
+        rows = _rows(conn.execute(
+            "SELECT guest_id, name, tier, phone FROM guests "
+            "WHERE name LIKE ? OR phone LIKE ? LIMIT 5", (q, q)))
+    if not rows:
+        return fail("NOT_FOUND", f"No guest matching {query}.",
+                    hints={"next": ["getGuestContext"]})
+    return ok(f"Found {rows[0]['name']}." if len(rows) == 1 else f"{len(rows)} guests match.",
+              {"matches": rows})
+
+
+def getArrivals(room_no: str | None = None, date: str | None = None) -> dict:
+    day = date or datetime.now().date().isoformat()
+    sql = ("SELECT r.res_id, r.room_no, r.arrival_date, r.arrival_eta, r.booked_category, "
+           "g.name, g.tier FROM reservations r JOIN guests g ON g.guest_id = r.guest_id "
+           "WHERE r.status = 'expected' AND r.arrival_date = ?")
+    params: list[Any] = [day]
+    if room_no:
+        sql += " AND r.room_no = ?"
+        params.append(str(room_no).strip())
+    with db() as conn:
+        rows = _rows(conn.execute(sql + " ORDER BY r.arrival_eta", params))
+
+    if not rows:
+        return ok(f"No arrivals expected on {day}." + (f" for {room_no}." if room_no else ""),
+                  {"date": day, "arrivals": []})
+    first = rows[0]
+    return ok(f"{len(rows)} arrival{'s' if len(rows) > 1 else ''} expected on {day}; "
+              f"{first['name']} at {first['arrival_eta']} into {first['room_no']}.",
+              {"date": day, "arrivals": rows})
+
+
+# --- 8..14 write tools ----------------------------------------------
+
+def moveRoom(guest_id: str, from_room: str, to_room: str, reason: str,
+              request_id: str | None = None) -> dict:
+    with db() as conn:
+        if request_id:
+            prior = conn.execute("SELECT * FROM moves WHERE request_id = ?",
+                                 (request_id,)).fetchone()
+            if prior:
+                return ok("That move is already recorded.", {"move_id": prior["id"]}, "DONE")
+
+        target = conn.execute("SELECT * FROM rooms WHERE room_no = ?",
+                              (str(to_room).strip(),)).fetchone()
+        if target is None:
+            return fail("NOT_FOUND", f"No room called {to_room}.")
+        if target["status"] != "vacant":
+            free = _rows(conn.execute(
+                "SELECT room_no, floor, category FROM rooms WHERE status = 'vacant'"))
+            return fail("UNAVAILABLE", f"{target['room_no']} is not vacant.",
+                        {"available_now": free},
+                        hints={"next": ["findAvailableRooms"]})
+
+        res = conn.execute(
+            "SELECT res_id FROM reservations WHERE guest_id = ? AND status = 'in_house'",
+            (guest_id,)).fetchone()
+        if res is None:
+            return fail("NOT_FOUND", f"No in-house reservation for {guest_id}.")
+
+        conn.execute("UPDATE reservations SET room_no = ? WHERE res_id = ?",
+                     (target["room_no"], res["res_id"]))
+        conn.execute("UPDATE rooms SET status = 'occupied' WHERE room_no = ?",
+                     (target["room_no"],))
+        conn.execute("UPDATE rooms SET status = 'out_of_service' WHERE room_no = ?",
+                     (from_room,))
+        cur = conn.execute(
+            "INSERT INTO moves (created_at, guest_id, from_room, to_room, reason, request_id) "
+            "VALUES (?,?,?,?,?,?)",
+            (now_iso(), guest_id, from_room, target["room_no"], reason, request_id))
+        _audit(conn, "room_moved", "reservation", res["res_id"],
+               {"from": from_room, "to": target["room_no"], "reason": reason})
+
+        return ok(f"Moved to {target['room_no']}. {from_room} is out of service.",
+                  {"move_id": cur.lastrowid, "to_room": target["room_no"],
+                   "to_floor": target["floor"], "from_room_status": "out_of_service"})
+
+
+def extendStay(guest_id: str, new_departure: str, rate_inr: int | None = None,
+                request_id: str | None = None) -> dict:
+    """Late checkout, capped at the next arrival's ETA. Never promise past an arrival."""
+    raw = str(new_departure).strip()
+    try:
+        requested = (datetime.fromisoformat(raw) if "T" in raw
+                     else datetime.fromisoformat(raw + "T23:59"))
+    except ValueError:
+        return fail("ERROR", "Give me the new departure as a date, optionally with a time.")
+
+    with db() as conn:
+        if request_id:
+            prior = conn.execute(
+                "SELECT * FROM reservations WHERE res_id = ? AND departure_date = ?",
+                (request_id, requested.date().isoformat())).fetchone()
+            if prior:
+                return ok("That extension is already recorded.", {"res_id": prior["res_id"]})
+
+        res = conn.execute(
+            "SELECT * FROM reservations WHERE guest_id = ? AND status = 'in_house'",
+            (guest_id,)).fetchone()
+        if res is None:
+            return fail("NOT_FOUND", f"No in-house reservation for {guest_id}.")
+        if res["room_no"] is None:
+            return fail("CONFLICT", "That guest has no room assigned yet.")
+
+        arrival = conn.execute(
+            "SELECT res_id, arrival_eta, guest_id FROM reservations "
+            "WHERE room_no = ? AND status = 'expected' AND arrival_date = ? "
+            "AND arrival_eta IS NOT NULL",
+            (res["room_no"], requested.date().isoformat()),
+        ).fetchone()
+
+        if arrival and arrival["arrival_eta"]:
+            eta = datetime.fromisoformat(f"{requested.date().isoformat()}T{arrival['arrival_eta']}")
+            if requested > eta:
+                latest = f"{requested.date().isoformat()}T{arrival['arrival_eta']}"
+                return fail(
+                    "CONFLICT",
+                    f"{res['room_no']} is needed for an arrival at {arrival['arrival_eta']}. "
+                    f"The latest I can hold it is {arrival['arrival_eta']}.",
+                    {"latest_possible_checkout": latest,
+                     "room_no": res["room_no"],
+                     "arriving_res_id": arrival["res_id"]},
+                    hints={"next": ["findAvailableRooms", "extendStay", "applyComp"]})
+
+        conn.execute("UPDATE reservations SET departure_date = ?, rate_inr = COALESCE(?, rate_inr) "
+                     "WHERE res_id = ?",
+                     (requested.date().isoformat(), rate_inr, res["res_id"]))
+        _audit(conn, "stay_extended", "reservation", res["res_id"],
+               {"new_departure": requested.isoformat(), "rate_inr": rate_inr})
+        return ok(f"Extended to {requested.strftime('%d %b, %H:%M')}.",
+                  {"res_id": res["res_id"], "new_departure": requested.isoformat(),
+                   "rate_inr": rate_inr})
+
+
+def applyComp(guest_id: str, amount_inr: int, reason: str,
+               approved_by: str | None = None, request_id: str | None = None) -> dict:
+    try:
+        amount = int(amount_inr)
+    except (TypeError, ValueError):
+        return fail("ERROR", "I need the compensation as a whole number of rupees.")
+
+    with db() as conn:
+        if request_id:
+            prior = conn.execute("SELECT * FROM comps WHERE request_id = ?",
+                                 (request_id,)).fetchone()
+            if prior:
+                return ok("That compensation is already recorded.",
+                          {"comp_id": prior["comp_id"],
+                           "approved_by": prior["approved_by"]})
+        guest = conn.execute("SELECT name, tier FROM guests WHERE guest_id = ?",
+                             (guest_id,)).fetchone()
+        if guest is None:
+            return fail("NOT_FOUND", f"I do not have a guest {guest_id}.")
+
+    decision = policy.evaluate("comp", {
+        "tier": guest["tier"], "amount_inr": amount,
+        "local_time": clock_now(), "approved_by": approved_by,
+    })
+
+    if decision["decision"] in ("ALLOW", "ALLOW_APPROVED"):
+        with db() as conn:
+            cur = conn.execute(
+                "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "
+                "approved_by, request_id) VALUES (?,?,?,?,?,?,?)",
+                (now_iso(), guest_id, amount, reason, decision["rule_code"],
+                 decision.get("approved_by") or approved_by, request_id))
+            if decision.get("approved_by") or approved_by:
+                conn.execute(
+                    "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
+                    "WHERE guest_id = ? AND amount_inr = ? AND status = 'pending'",
+                    (decision.get("approved_by") or approved_by, now_iso(), guest_id, amount))
+            _audit(conn, "comp_applied", "guest", guest_id,
+                   {"amount_inr": amount, "reason": reason, "rule_code": decision["rule_code"],
+                    "approved_by": decision.get("approved_by") or approved_by})
+        who = decision.get("approved_by")
+        tail = f" Approved by {who}." if who else " Within the guest's ceiling."
+        return ok(f"Compensation of {amount} rupees recorded for {guest['name']}." + tail,
+                  {"comp_id": cur.lastrowid, "amount_inr": amount,
+                   "rule_code": decision["rule_code"], "approved_by": who})
+
+    if decision["decision"] == "ESCALATE":
+        with db() as conn:
+            _audit(conn, "comp_escalated", "guest", guest_id,
+                   {"amount_inr": amount, "reason": reason, "rule": decision["rule_code"]})
+        return fail("ESCALATE",
+                    f"{amount} rupees is above what this desk can approve. "
+                    f"It has to go to the General Manager.",
+                    {"amount_inr": amount, "escalate_to": decision["escalate_to"],
+                     "rule_code": decision["rule_code"]},
+                    hints={"next": ["getShiftSummary"]})
+
+    with db() as conn:
+        _audit(conn, "comp_blocked", "guest", guest_id,
+               {"amount_inr": amount, "reason": reason, "rule": decision["rule_code"],
+                "required_role": decision["required_role"]})
+        pending = conn.execute(
+            "SELECT id FROM approvals WHERE guest_id = ? AND amount_inr = ? AND status = 'pending'",
+            (guest_id, amount)).fetchone()
+        if pending:
+            approval_id = pending["id"]
+        else:
+            cur = conn.execute(
+                "INSERT INTO approvals (created_at, guest_id, amount_inr, reason, rule_code) "
+                "VALUES (?,?,?,?,?)",
+                (now_iso(), guest_id, amount, reason, decision["rule_code"]))
+            approval_id = cur.lastrowid
+    return fail("APPROVAL_REQUIRED", decision["message"],
+                {"approval_id": approval_id, "requested_inr": amount,
+                 "limit_inr": decision["limit_inr"],
+                 "required_role": decision["required_role"],
+                 "rule_code": decision["rule_code"], "guest_name": guest["name"]},
+                hints={"next": ["applyComp"], "needs": "approved_by"})
+
+
+def createDepartmentTask(department: str, location: str, priority: str,
+                           description: str) -> dict:
+    department = str(department).strip().lower()
+    priority = str(priority).strip().lower()
+    if priority not in SLA_MINUTES:
+        priority = "medium"
+    sla_minutes = SLA_MINUTES[priority]
+    due = (datetime.now() + timedelta(minutes=sla_minutes)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO tasks (created_at, department, location, priority, description, sla_due) "
+            "VALUES (?,?,?,?,?,?)",
+            (now_iso(), department, location, priority, description, due))
+        _audit(conn, "task_created", "task", str(cur.lastrowid),
+               {"department": department, "location": location,
+                "priority": priority, "description": description})
+        return ok(f"{department.title()} task raised for {location}, due in {sla_minutes} minutes.",
+                  {"task_id": cur.lastrowid, "sla_due": due, "sla_minutes": sla_minutes})
+
+
+def updateTask(task_id: int, status: str, note: str | None = None) -> dict:
+    status = str(status).strip().lower()
+    if status not in TASK_STATUSES:
+        return fail("ERROR", f"{status} is not a task status.",
+                    hints={"valid": sorted(TASK_STATUSES)})
+    with db() as conn:
+        task = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (int(task_id),)).fetchone()
+        if task is None:
+            return fail("NOT_FOUND", f"No task number {task_id}.")
+        closed = now_iso() if status in ("done", "cancelled") else None
+        conn.execute("UPDATE tasks SET status = ?, note = COALESCE(?, note), closed_at = ? "
+                     "WHERE task_id = ?", (status, note, closed, int(task_id)))
+        _audit(conn, "task_updated", "task", str(task_id),
+               {"from": task["status"], "to": status, "note": note})
+        return ok(f"Task {task_id} is now {status.replace('_', ' ')}.",
+                  {"task_id": int(task_id), "status": status})
+
+
+def getPolicy(topic: str) -> dict:
+    words = {w for w in re.findall(r"[a-z0-9]+", str(topic).lower()) if len(w) > 3}
+    with db() as conn:
+        chunks = _rows(conn.execute("SELECT topic, body FROM policy_chunks"))
+    scored = []
+    for c in chunks:
+        body = (c["topic"] + " " + c["body"]).lower()
+        score = sum(1 for w in words if w in body)
+        if score:
+            scored.append((score, c))
+    if not scored:
+        return ok("I have no policy section on that.", {"sections": []})
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = [c for _, c in scored[:2]]
+    return ok("Here is what the policy says.", {"sections": top})
+
+
+def scheduleFollowup(room_no: str, minutes: int, note: str) -> dict:
+    try:
+        mins = int(minutes)
+    except (TypeError, ValueError):
+        return fail("ERROR", "I need the reminder as a number of minutes.")
+    due = (datetime.now() + timedelta(minutes=mins)).strftime("%Y-%m-%dT%H:%M:%S")
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO followups (created_at, room_no, due_at, note) VALUES (?,?,?,?)",
+            (now_iso(), room_no, due, note))
+        _audit(conn, "followup_scheduled", "room", room_no,
+               {"minutes": mins, "note": note, "due_at": due})
+        return ok(f"I will remind you about {room_no} in {mins} minutes.",
+                  {"followup_id": cur.lastrowid, "due_at": due})
+
+
+REGISTRY = {
+    "getShiftSummary": getShiftSummary,
+    "getRoom": getRoom,
+    "findAvailableRooms": findAvailableRooms,
+    "setRoomStatus": setRoomStatus,
+    "getGuestContext": getGuestContext,
+    "searchGuest": searchGuest,
+    "getArrivals": getArrivals,
+    "moveRoom": moveRoom,
+    "extendStay": extendStay,
+    "applyComp": applyComp,
+    "createDepartmentTask": createDepartmentTask,
+    "updateTask": updateTask,
+    "getPolicy": getPolicy,
+    "scheduleFollowup": scheduleFollowup,
+}

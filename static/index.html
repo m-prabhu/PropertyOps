@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#E7ECEF" />
+<title>PropertyOps — front desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+<style>
+  /* ---- tokens ---------------------------------------------------- */
+  :root {
+    --paper:      #E7ECEF;
+    --panel:      #FFFFFF;
+    --ink:        #0F1D27;
+    --ink-mute:   #55666F;
+    --ink-faint:  #8B9AA3;
+    --rule:       #CBD6DD;
+    --vacant:     #0E7A5F;
+    --occupied:   #93A4AE;
+    --oos:        #B26A12;
+    --signal:     #A32B2B;
+    --action:     #0A5C9E;
+    --radius:     2px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .skip {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    z-index: 10;
+    background: var(--ink);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    transition: top .15s ease;
+  }
+  .skip:focus { top: 12px; }
+
+  html, body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  :focus-visible {
+    outline: 2px solid var(--action);
+    outline-offset: 2px;
+  }
+
+  .num { font-family: "Archivo Narrow", "Archivo", system-ui, sans-serif; font-weight: 700; }
+
+  /* ---- header ---------------------------------------------------- */
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 28px;
+    padding: 14px 24px 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .wordmark {
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 21px;
+    letter-spacing: -0.01em;
+  }
+  .wordmark span { color: var(--ink-faint); font-weight: 600; }
+
+  .property { color: var(--ink-mute); font-size: 13px; }
+
+  .shift { color: var(--ink-mute); font-size: 13px; }
+  .shift b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .counters { margin-left: auto; display: flex; gap: 26px; }
+  .counter { text-align: right; }
+  .counter dt { color: var(--ink-faint); font-size: 11px; margin: 0 0 1px; }
+  .counter dd {
+    margin: 0;
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 19px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .counter.warn dd { color: var(--oos); }
+  .counter.signal dd { color: var(--signal); }
+
+  .mic { display: flex; align-items: center; gap: 9px; margin-left: 26px; }
+  .mic-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--ink-faint); flex: none;
+  }
+  .mic-dot.live { background: var(--vacant); box-shadow: 0 0 0 3px rgba(14,122,95,.16); }
+  .mic span { color: var(--ink-mute); font-size: 12px; min-width: 88px; }
+
+  .btn {
+    border: 1px solid var(--rule);
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 6px 13px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .btn:hover { border-color: var(--ink-faint); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--action); border-color: var(--action); color: #fff; }
+  .btn.primary:hover { background: #08507f; }
+  .btn.ghost { background: transparent; }
+
+  /* ---- layout ---------------------------------------------------- */
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 336px;
+    gap: 22px;
+    padding: 18px 24px 28px;
+    align-items: start;
+    max-width: 1500px;
+    scroll-margin-top: 12px;
+  }
+
+  h2 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-mute);
+    margin: 0 0 10px;
+  }
+
+  /* ---- rack ------------------------------------------------------ */
+  .rack { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); }
+
+  .rack-head {
+    display: grid;
+    grid-template-columns: 58px repeat(8, minmax(0, 1fr));
+    padding: 8px 12px 6px;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
+  .rack-head .led { display: flex; align-items: center; gap: 14px; grid-column: 2 / -1; }
+  .led i { display: inline-block; width: 8px; height: 8px; border-radius: 1px; margin-right: 5px; }
+
+  .floor {
+    display: grid;
+    grid-template-columns: 58px repeat(8, minmax(0, 1fr));
+    gap: 7px;
+    padding: 7px 12px;
+    border-bottom: 1px solid #E4EAEE;
+  }
+  .floor:last-child { border-bottom: 0; }
+  .floor-no {
+    align-self: center;
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .key {
+    position: relative;
+    border: 1px solid var(--rule);
+    border-left-width: 3px;
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 5px 8px 6px;
+    min-height: 52px;
+    transition: background-color .18s ease, border-color .18s ease;
+  }
+  .key-no {
+    display: block;
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 23px;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .01em;
+  }
+  .key-meta {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .key[data-status="occupied"] { border-left-color: var(--occupied); }
+  .key[data-status="occupied"] .key-no { color: var(--ink-mute); font-weight: 600; }
+
+  .key[data-status="vacant"] {
+    border-left-color: var(--vacant);
+    background: rgba(14, 122, 95, .06);
+  }
+  .key[data-status="vacant"] .key-meta { color: var(--vacant); }
+
+  .key[data-status="out_of_service"] {
+    border-left-color: var(--oos);
+    background:
+      repeating-linear-gradient(135deg, rgba(178,106,18,.11) 0 6px, rgba(178,106,18,.03) 6px 12px);
+  }
+  .key[data-status="out_of_service"] .key-meta { color: var(--oos); }
+
+  .key[data-status="blocked"] { border-left-color: var(--signal); }
+
+  /* ---- rail ------------------------------------------------------ */
+  .rail { display: flex; flex-direction: column; gap: 22px; }
+
+  .approval {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--signal);
+    border-radius: var(--radius);
+    padding: 12px 14px 13px;
+    box-shadow: 0 1px 2px rgba(15, 29, 39, .07), 0 8px 20px -12px rgba(15, 29, 39, .28);
+  }
+  .approval-amount {
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 30px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--signal);
+  }
+  .approval-who { margin-top: 5px; font-weight: 500; }
+  .approval-why { margin-top: 2px; color: var(--ink-mute); font-size: 12.5px; }
+  .approval-rule {
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-faint);
+    font-size: 11.5px;
+  }
+  .approval-actions { display: flex; gap: 8px; margin-top: 11px; }
+  .approval-actions .btn { flex: 1; }
+
+  .approval.empty {
+    border-left-color: var(--rule);
+    box-shadow: none;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+    padding: 12px 14px;
+  }
+
+  .tasks { display: flex; flex-direction: column; }
+  .task {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 3px 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #E4EAEE;
+  }
+  .task:first-child { border-top: 1px solid var(--rule); }
+  .task-what { font-size: 13px; }
+  .task-where { color: var(--ink-faint); font-size: 11.5px; }
+  .task-clock {
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-mute);
+    text-align: right;
+  }
+  .task-clock.due { color: var(--oos); }
+  .task-clock.over { color: var(--signal); }
+  .bar {
+    grid-column: 1 / -1;
+    height: 3px;
+    background: #E4EAEE;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .bar i { display: block; height: 100%; background: var(--vacant); }
+  .bar.warn i { background: var(--oos); }
+  .bar.over i { background: var(--signal); }
+
+  .ledger { font-size: 12.5px; }
+  .entry {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 9px;
+    padding: 6px 0;
+    border-bottom: 1px solid #E4EAEE;
+  }
+  .entry:last-child { border-bottom: 0; }
+  .entry time {
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+  }
+  .entry b { font-weight: 600; }
+  .entry.blocked b { color: var(--signal); }
+  .entry .who { color: var(--ink-faint); overflow-wrap: anywhere; }
+
+  .quiet { color: var(--ink-faint); font-size: 12.5px; padding: 6px 0; }
+
+  footer {
+    padding: 0 24px 26px;
+    color: var(--ink-faint);
+    font-size: 11.5px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .key { transition: none; }
+    .skip { transition: none; }
+  }
+
+  @media (max-width: 1080px) {
+    main { grid-template-columns: 1fr; }
+    .rail { order: -1; }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to the room rack</a>
+<h1 class="sr-only">PropertyOps front desk console</h1>
+
+<header>
+  <div class="wordmark">PropertyOps<span> / front desk</span></div>
+  <div class="property">Polaris Business Hotel</div>
+  <div class="shift">night shift, <b id="clock">23:00</b></div>
+
+  <dl class="counters">
+    <div class="counter"><dt>occupied</dt><dd id="c-occ">—</dd></div>
+    <div class="counter warn"><dt>out of service</dt><dd id="c-oos">—</dd></div>
+    <div class="counter"><dt>open tasks</dt><dd id="c-tasks">—</dd></div>
+    <div class="counter signal"><dt>comped tonight</dt><dd id="c-comp">—</dd></div>
+  </dl>
+
+  <div class="mic">
+    <span class="mic-dot" id="mic-dot"></span>
+    <span id="mic-label">microphone off</span>
+    <button class="btn primary" id="join">Connect</button>
+  </div>
+</header>
+
+<main id="main">
+  <section aria-labelledby="rack-title">
+    <h2 id="rack-title">Room rack</h2>
+    <div class="rack" id="rack">
+      <div class="rack-head">
+        <div class="led">
+          <span><i aria-hidden="true" style="background:var(--vacant)"></i>vacant</span>
+          <span><i aria-hidden="true" style="background:var(--occupied)"></i>occupied</span>
+          <span><i aria-hidden="true" style="background:var(--oos)"></i>out of service</span>
+        </div>
+      </div>
+      <div id="floors"></div>
+    </div>
+  </section>
+
+  <aside class="rail">
+    <section aria-labelledby="needs-title">
+      <h2 id="needs-title">Needs you</h2>
+      <div id="approvals" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="tasks-title">
+      <h2 id="tasks-title">Department tasks</h2>
+      <div class="tasks" id="tasks" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="ledger-title">
+      <h2 id="ledger-title">Shift ledger</h2>
+      <div class="ledger" id="ledger" aria-live="polite"></div>
+    </section>
+  </aside>
+</main>
+
+<footer>
+  <span>Speak to the copilot, or press Connect to start the microphone.</span>
+  <button class="btn ghost" id="reset" style="margin-left:auto">Reset demo state</button>
+</footer>
+
+<script>
+const SLA_TOTAL = { emergency: 15, high: 30, medium: 120, low: 240 };
+const els = {
+  floors: document.getElementById("floors"),
+  occ: document.getElementById("c-occ"),
+  oos: document.getElementById("c-oos"),
+  tasks: document.getElementById("c-tasks"),
+  comp: document.getElementById("c-comp"),
+  tasksList: document.getElementById("tasks"),
+  ledger: document.getElementById("ledger"),
+  approvals: document.getElementById("approvals"),
+  clock: document.getElementById("clock"),
+};
+
+const cells = new Map();   // room_no -> { el, no, meta }
+let built = false;
+let lastStatus = {};
+let micClient = null;
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const timeFmt = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+const inrFmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+
+// Re-render only when the markup actually changes, so aria-live regions don't
+// re-announce the same content every poll.
+const rendered = { tasks: "", ledger: "", approvals: "" };
+function setHTML(key, el, html) {
+  if (rendered[key] === html) return;
+  rendered[key] = html;
+  el.innerHTML = html;
+}
+
+function money(n) { return inrFmt.format(Number(n) || 0); }
+
+function buildRack(rooms) {
+  const byFloor = {};
+  for (const r of rooms) (byFloor[r.floor] ||= []).push(r);
+  els.floors.innerHTML = Object.keys(byFloor)
+    .sort((a, b) => b - a)
+    .map(floor => `
+      <div class="floor">
+        <div class="floor-no">${floor}</div>
+        ${byFloor[floor].map(r => `
+          <div class="key" data-status="${r.status}" data-room="${r.room_no}"
+               aria-label="Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}">
+            <span class="key-no">${r.room_no}</span>
+            <span class="key-meta">${r.status === "out_of_service" ? "out of service" : r.category}</span>
+          </div>`).join("")}
+      </div>`).join("");
+
+  els.floors.querySelectorAll(".key").forEach(el => {
+    cells.set(el.dataset.room, {
+      el,
+      meta: el.querySelector(".key-meta"),
+      status: el.dataset.status,
+    });
+  });
+  built = true;
+}
+
+function renderRack(rooms) {
+  if (!built) buildRack(rooms);
+  for (const r of rooms) {
+    const cell = cells.get(r.room_no);
+    if (!cell) continue;
+    if (cell.status !== r.status) {
+      cell.status = r.status;
+      cell.el.dataset.status = r.status;
+      cell.meta.textContent = r.status === "out_of_service" ? "out of service" : r.category;
+      cell.el.setAttribute("aria-label",
+        `Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}`);
+      if (lastStatus[r.room_no] && !reduceMotion.matches && cell.el.animate) {
+        cell.el.animate(
+          [{ boxShadow: "0 0 0 2px rgba(10, 92, 158, .55)" },
+           { boxShadow: "0 0 0 0 rgba(10, 92, 158, 0)" }],
+          { duration: 900, easing: "ease-out" }
+        );
+      }
+    }
+    lastStatus[r.room_no] = r.status;
+  }
+}
+
+function renderTasks(tasks) {
+  if (!tasks.length) {
+    setHTML("tasks", els.tasksList, `<div class="quiet">No open tasks. The board is clear.</div>`);
+    return;
+  }
+  setHTML("tasks", els.tasksList, tasks.map(t => {
+    const total = SLA_TOTAL[t.priority] || 120;
+    const left = Math.max(0, Math.min(total, t.minutes_to_sla ?? total));
+    const pct = Math.round((left / total) * 100);
+    const state = t.minutes_to_sla < 0 ? "over" : t.minutes_to_sla <= 15 ? "warn" : "";
+    const clock = t.minutes_to_sla < 0
+      ? `${Math.abs(t.minutes_to_sla)} min over`
+      : `${t.minutes_to_sla} min`;
+    return `
+      <div class="task">
+        <div>
+          <div class="task-what">${t.description}</div>
+          <div class="task-where">${t.department} · room ${t.location} · ${t.priority}</div>
+        </div>
+        <div class="task-clock ${state}">${clock}</div>
+        <div class="bar ${state}"><i style="width:${pct}%"></i></div>
+      </div>`;
+  }).join(""));
+}
+
+function renderLedger(audit) {
+  if (!audit.length) {
+    setHTML("ledger", els.ledger, `<div class="quiet">Nothing recorded yet.</div>`);
+    return;
+  }
+  setHTML("ledger", els.ledger, audit.slice(0, 14).map(a => {
+    const blocked = a.action === "comp_blocked" || a.action === "comp_declined";
+    return `
+      <div class="entry ${blocked ? "blocked" : ""}">
+        <time datetime="${a.ts}">${timeFmt.format(new Date(a.ts))}</time>
+        <div><b>${a.action.replace(/_/g, " ")}</b> <span class="who">${a.detail}</span></div>
+      </div>`;
+  }).join(""));
+}
+
+function renderApprovals(list) {
+  if (!list || !list.length) {
+    setHTML("approvals", els.approvals,
+      `<div class="approval empty">No approvals waiting. Anything within policy clears itself.</div>`);
+    return;
+  }
+  setHTML("approvals", els.approvals, list.map(a => `
+    <div class="approval" role="group" aria-label="Compensation approval for ${a.name}">
+      <div class="approval-amount">${money(a.amount_inr)}</div>
+      <div class="approval-who">${a.name}${a.room_no ? " · room " + a.room_no : ""}</div>
+      <div class="approval-why">${a.reason}</div>
+      <div class="approval-rule">Rule ${a.rule_code}. Above the automatic ceiling, so it needs a name against it.</div>
+      <div class="approval-actions">
+        <button class="btn primary" data-approve="${a.id}">Approve</button>
+        <button class="btn" data-decline="${a.id}">Decline</button>
+      </div>
+    </div>`).join(""));
+}
+
+async function refresh() {
+  let s;
+  try {
+    const res = await fetch("/api/state");
+    if (!res.ok) return;
+    s = await res.json();
+  } catch { return; }
+
+  els.occ.textContent = `${Math.round((s.stats.occupancy_pct / 100) * s.rooms.length)}/${s.rooms.length}`;
+  if (s.now) els.clock.textContent = s.now;
+  els.oos.textContent = s.stats.out_of_service;
+  els.tasks.textContent = s.stats.open_tasks;
+  els.comp.textContent = money(s.stats.comp_total_inr);
+
+  renderRack(s.rooms);
+  renderTasks(s.tasks.filter(t => t.status === "open" || t.status === "in_progress"));
+  renderLedger(s.audit);
+  renderApprovals(s.approvals);
+}
+
+document.addEventListener("click", async (e) => {
+  const approve = e.target.closest("[data-approve]");
+  const decline = e.target.closest("[data-decline]");
+  if (!approve && !decline) return;
+  const id = (approve || decline).dataset[approve ? "approve" : "decline"];
+  const path = approve ? "approve" : "decline";
+  e.target.disabled = true;
+  try {
+    await fetch(`/api/approvals/${id}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: "R. Menon" }),
+    });
+  } finally {
+    refresh();
+  }
+});
+
+/* ---- mic + agent -------------------------------------------------- */
+document.getElementById("join").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  const label = document.getElementById("mic-label");
+  const dot = document.getElementById("mic-dot");
+  btn.disabled = true;
+  btn.textContent = "Connecting…";
+
+  try {
+    const cfg = await (await fetch("/api/rtc-config")).json();
+    if (!cfg.ok) {
+      label.textContent = "Agora not configured";
+      btn.disabled = false;
+      btn.textContent = "Retry";
+      return;
+    }
+
+    micClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    micClient.on("user-published", async (user, mediaType) => {
+      await micClient.subscribe(user, mediaType);
+      if (mediaType === "audio") {
+        user.audioTrack.play();
+        label.textContent = "copilot speaking";
+      }
+    });
+
+    await micClient.join(cfg.app_id, cfg.channel, cfg.token, cfg.uid);
+    const mic = await AgoraRTC.createMicrophoneAudioTrack();
+    await micClient.publish([mic]);
+    dot.classList.add("live");
+    label.textContent = "mic on, starting copilot…";
+
+    const started = await fetch("/api/agent/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: cfg.channel,
+        agent_uid: Number(cfg.agent_uid),
+        user_uid: Number(cfg.uid),
+      }),
+    }).then(r => r.json());
+
+    if (started.ok) {
+      label.textContent = "listening";
+      btn.textContent = "Connected";
+    } else {
+      label.textContent = "agent failed: " + (started.error || "unknown");
+      btn.disabled = false;
+      btn.textContent = "Retry";
+    }
+  } catch (err) {
+    label.textContent = "connection failed";
+    btn.disabled = false;
+    btn.textContent = "Retry";
+  }
+});
+
+fetch("/api/voice-status").then(r => r.json()).then(s => {
+  if (!s.ready) {
+    document.getElementById("mic-label").textContent =
+      `voice unconfigured (${s.missing.length} missing)`;
+    document.getElementById("join").title = "Missing: " + s.missing.join(", ");
+  }
+}).catch(() => {});
+
+document.getElementById("reset").addEventListener("click", async () => {
+  if (!confirm("Reset to the clean demo state? Comps, moves and tasks from this shift are discarded.")) return;
+  await fetch("/api/reset", { method: "POST" });
+  built = false;
+  cells.clear();
+  lastStatus = {};
+  rendered.tasks = rendered.ledger = rendered.approvals = "";
+  els.floors.innerHTML = "";
+  refresh();
+});
+
+refresh();
+setInterval(refresh, 1200);
+</script>
+</body>
+</html>

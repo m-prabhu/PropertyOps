@@ -1,0 +1,17 @@
+# secrets and generated state — never commit
+.env
+*.db
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+
+# local tooling / scratch
+_lab/
+.opencode/
+.pytest_cache/
+
+# os
+.DS_Store
+Thumbs.db
