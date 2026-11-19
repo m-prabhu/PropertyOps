@@ -260,6 +260,32 @@ def main() -> None:
           night["data"]["guest"])
     os.environ.pop("PO_SIM_HOUR", None)
 
+    # --- proactive SLA alert ------------------------------------------
+    section("proactive SLA alert")
+
+    db.init(reset=True)
+    from app.main import _raise_alerts  # noqa: E402 - imported late to avoid side effects
+
+    first = _raise_alerts()
+    check("a task close to breaching is flagged",
+          any(t["location"] == "605" for t in first), first)
+
+    _raise_alerts()
+    conn = db.connect()
+    try:
+        logged = conn.execute(
+            "SELECT COUNT(*) c FROM audit WHERE action = 'sla_alert'").fetchone()["c"]
+    finally:
+        conn.close()
+    check("the alert is logged once, not on every poll",
+          logged == len(first), f"logged={logged} first={len(first)}")
+
+    flagged_id = next(t["task_id"] for t in first if t["location"] == "605")
+    tools.updateTask(flagged_id, "done", "drain cleared")
+    check("closing the task clears the alert",
+          not any(t["task_id"] == flagged_id for t in tools.at_risk_tasks(15)),
+          tools.at_risk_tasks(15))
+
     # --- envelopes ---------------------------------------------------
     section("envelope contract")
 

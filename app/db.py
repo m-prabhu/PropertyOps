@@ -181,6 +181,12 @@ CREATE TABLE IF NOT EXISTS walks (
   cost_inr     INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sla_alerts (
+  task_id      INTEGER PRIMARY KEY,
+  created_at   TEXT NOT NULL,
+  minutes_left INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS policy_chunks (
   id    INTEGER PRIMARY KEY AUTOINCREMENT,
   topic TEXT NOT NULL,
@@ -313,7 +319,8 @@ def iso_in(minutes: int) -> str:
 def seed(conn: sqlite3.Connection) -> None:
     for table in ("property", "rooms", "guests", "reservations", "folio_charges", "tasks",
                   "comps", "moves", "followups", "policy_rules", "staff", "policy_chunks",
-                  "audit", "approvals", "partner_hotels", "transport_requests", "walks"):
+                  "audit", "approvals", "partner_hotels", "transport_requests", "walks",
+                  "sla_alerts"):
         conn.execute(f"DELETE FROM {table}")
 
     conn.execute(
@@ -404,6 +411,8 @@ def seed(conn: sqlite3.Connection) -> None:
         [
             (now_iso(), "housekeeping", "Pool deck", "low", "Restock towels and sun loungers", iso_in(240), "M. Das"),
             (now_iso(), "maintenance", "Lobby", "medium", "Replace lobby AC filter (scheduled)", iso_in(120), "S. Kumar"),
+            # Already close to breaching, so the shift opens with a live alert.
+            (iso_in(-25), "maintenance", "605", "high", "Guest reports shower drain blocked", iso_in(5), "S. Kumar"),
         ],
     )
 

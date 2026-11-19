@@ -826,6 +826,22 @@ def reverseCharge(charge_id: int, reason: str, approved_by: str = "") -> dict:
              "approved_by": approver, "reason": reason})
 
 
+def at_risk_tasks(threshold_minutes: int = 15) -> list[dict]:
+    """Open tasks at or past their SLA threshold. Used by the alert loop, not a tool."""
+    with db() as conn:
+        rows = _rows(conn.execute(
+            "SELECT task_id, department, location, priority, description, sla_due, assignee "
+            "FROM tasks WHERE status IN ('open','in_progress')"))
+    flagged = []
+    for row in rows:
+        minutes = _minutes_until(row["sla_due"])
+        if minutes <= threshold_minutes:
+            row["minutes_left"] = minutes
+            flagged.append(row)
+    flagged.sort(key=lambda r: r["minutes_left"])
+    return flagged
+
+
 REGISTRY = {
     "getShiftSummary": getShiftSummary,
     "getRoom": getRoom,

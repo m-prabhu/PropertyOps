@@ -21,6 +21,8 @@ from agora_agent.agentkit import Agent as AgoraAgent
 from agora_agent.agentkit.token import generate_convo_ai_token
 from agora_agent.agentkit.vendors import DeepgramSTT, MurfTTS, OpenAI
 
+from .tools import at_risk_tasks
+
 logger = logging.getLogger("uvicorn.error")
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -133,11 +135,38 @@ class AgentService:
 
     # --- lifecycle ---------------------------------------------------
 
+    def _opening(self) -> tuple[str, str]:
+        """Speak first, about what is already at risk. The agent should not wait to be asked."""
+        try:
+            alerts = at_risk_tasks(15)
+        except Exception:  # never block a session because the alert query failed
+            alerts = []
+        if not alerts:
+            return GREETING, ""
+
+        first = alerts[0]
+        minutes = first["minutes_left"]
+        when = f"{minutes} minutes left" if minutes >= 0 else f"{abs(minutes)} minutes over"
+        greeting = (
+            f"Front desk copilot. Heads up: {first['department']} on {first['location']} "
+            f"has {when} on its SLA. What else is happening?"
+        )
+        note = (
+            "At the start of this shift these tasks were already at risk: "
+            + "; ".join(f"{a['department']} on {a['location']}, {a['minutes_left']} minutes"
+                        for a in alerts[:3])
+            + ". Lead with the most urgent one before anything else."
+        )
+        return greeting, note
+
     def _build_agent(self) -> AgoraAgent:
         instructions = (
             PROMPT_PATH.read_text(encoding="utf-8-sig")
             if PROMPT_PATH.exists() else DEFAULT_INSTRUCTIONS
         )
+        greeting, alert_note = self._opening()
+        if alert_note:
+            instructions = f"{instructions}\n\n{alert_note}"
 
         llm_kwargs: dict[str, Any] = {}
         if self.llm_key:
@@ -145,7 +174,7 @@ class AgentService:
 
         llm = OpenAI(
             model=self.llm_model,
-            greeting_message=GREETING,
+            greeting_message=greeting,
             failure_message=FAILURE,
             max_history=20,
             max_tokens=1024,
@@ -166,7 +195,7 @@ class AgentService:
         agent = AgoraAgent(
             client=self.client,
             instructions=instructions,
-            greeting=GREETING,
+            greeting=greeting,
             failure_message=FAILURE,
             max_history=50,
             turn_detection={

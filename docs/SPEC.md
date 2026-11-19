@@ -15,7 +15,7 @@ One property, one role (duty manager), voice-first, mock PMS. "Complete" means
 | Tier | Contents | Ship by |
 |---|---|---|
 | **P0** | 20 tools · W1–W5 · policy engine · console · audit · reset | 21 Nov, 12:45 IST |
-| **P1** | guest notify, proactive SLA alert, MCP wrapper | only if on schedule |
+| **P1** | guest notify, MCP wrapper | only if on schedule |
 | **P2** | Real PMS integration, payments, multi-property, RBAC, housekeeping app, forecasting, full i18n | roadmap slide only |
 
 **Non-goals, stated explicitly:** no real PMS, no payment gateway, no auth, no
@@ -309,6 +309,21 @@ trigger  "508 wants to keep the room till 4pm"
 the exact alternative rather than a vague no. If the property later needs a cleaning
 buffer, it becomes a policy rule — not a constant in code.
 
+### Proactive SLA alert  *(built)*
+
+`at_risk_tasks()` flags open work at or inside its SLA threshold. Two paths use it:
+
+- **The agent opens with it.** Before a session starts, the greeting is composed from
+  the most urgent at-risk task, so the copilot speaks first instead of waiting to be
+  asked. The remaining alerts are appended to the instructions as context.
+- **The console raises it live.** `/api/state` returns current alerts, the console
+  shows an SLA band and chimes when a new one appears, and each alert is written to
+  the audit log exactly once (`sla_alerts` prevents repeats on every poll).
+
+Agaro has no server-side call that makes a running agent speak unprompted — custom
+context is pulled by the agent on its next turn — so mid-session alerts reach the
+manager through the console, and the agent leads with them at the next session.
+
 ### W5 — Shift handover  *(P0)*
 
 ```
@@ -451,6 +466,7 @@ metrics strip. Policy engine and audit are never cut.
 | 4 | Tool count | **14 tools for P0, confirmed.** P1 tools stay out until P0 is green. |
 | 5 | Text input fallback | **Cut.** Typed input to the agent requires the Agora client toolkit plus an RTM/Signaling client; there is no REST equivalent. That is 1–2 hours of unverifiable work plus live debugging, for a feature that only matters if the mic fails — and the recorded video covers that case better. |
 | 6 | Tool count | **20.** The 14 specified, plus `declineApproval`, the three W3 tools, and the two W4 tools. Agora caps an agent at 32, so there is room. |
+| 7 | Proactive SLA alert | **Built as far as the platform allows.** The agent cannot be made to speak mid-session by a server call, so it leads with alerts at session start and the console raises them live. |
 
 ## 12. Verification
 

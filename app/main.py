@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from . import db as dbmod
 from . import agora_agent as agora
 from .clock import now as clock_now
-from .tools import REGISTRY
+from .tools import REGISTRY, at_risk_tasks
 
 try:
     from dotenv import load_dotenv
@@ -207,6 +207,38 @@ def _metrics(conn) -> dict:
     }
 
 
+def _raise_alerts(threshold: int = 15) -> list[dict]:
+    """Flag tasks at risk of breaching SLA, once each, and write them to the ledger."""
+    items = at_risk_tasks(threshold)
+    if not items:
+        return []
+    conn = dbmod.connect()
+    try:
+        for a in items:
+            seen = conn.execute("SELECT 1 FROM sla_alerts WHERE task_id = ?",
+                                (a["task_id"],)).fetchone()
+            if seen:
+                continue
+            conn.execute(
+                "INSERT INTO sla_alerts (task_id, created_at, minutes_left) VALUES (?,?,?)",
+                (a["task_id"], dbmod.now_iso(), a["minutes_left"]))
+            conn.execute(
+                "INSERT INTO audit (created_at, actor, action, entity, entity_id, detail_json) "
+                "VALUES (?,?,?,?,?,?)",
+                (dbmod.now_iso(), "system", "sla_alert", "task", str(a["task_id"]),
+                 json.dumps({"department": a["department"], "location": a["location"],
+                             "minutes_left": a["minutes_left"]})))
+        conn.commit()
+    finally:
+        conn.close()
+    return items
+
+
+@app.get("/api/alerts")
+def alerts() -> dict:
+    return {"alerts": _raise_alerts()}
+
+
 @app.get("/api/state")
 def state() -> dict:
     conn = dbmod.connect()
@@ -265,6 +297,7 @@ def state() -> dict:
         "approvals": approvals,
         "metrics": metrics,
         "tools": _tool_health(),
+        "alerts": _raise_alerts(),
         "stats": {
             "occupancy_pct": round(occupied / total * 100, 1) if total else 0,
             "out_of_service": oos,

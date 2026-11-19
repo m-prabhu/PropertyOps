@@ -319,6 +319,28 @@
 
   .quiet { color: var(--ink-faint); font-size: 12.5px; padding: 6px 0; }
 
+  /* ---- sla alert band -------------------------------------------- */
+  .alerts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    align-items: baseline;
+    padding: 9px 24px;
+    background: rgba(178, 106, 18, .10);
+    border-bottom: 1px solid rgba(178, 106, 18, .5);
+    font-size: 13px;
+  }
+  .alerts .alert-item { white-space: nowrap; }
+  .alerts .alert-item + .alert-item {
+    border-left: 1px solid rgba(178, 106, 18, .35);
+    padding-left: 18px;
+  }
+  .alerts strong {
+    color: var(--oos);
+    font-weight: 700;
+    margin-right: 5px;
+  }
+
   /* ---- metrics strip --------------------------------------------- */
   .metrics {
     display: flex;
@@ -457,6 +479,8 @@
   </div>
 </div>
 
+<div class="alerts" id="alerts" role="status" aria-live="assertive" hidden></div>
+
 <main id="main">
   <section aria-labelledby="rack-title">
     <h2 id="rack-title">Room rack</h2>
@@ -525,6 +549,7 @@ const els = {
   mComps: document.getElementById("m-comps"),
   mSla: document.getElementById("m-sla"),
   mTools: document.getElementById("m-tools"),
+  alerts: document.getElementById("alerts"),
   fails: document.getElementById("fails"),
   failsSection: document.getElementById("fails-section"),
   drawer: document.getElementById("drawer"),
@@ -544,7 +569,7 @@ const inrFmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "IN
 
 // Re-render only when the markup actually changes, so aria-live regions don't
 // re-announce the same content every poll.
-const rendered = { tasks: "", ledger: "", approvals: "", fails: "" };
+const rendered = { tasks: "", ledger: "", approvals: "", fails: "", alerts: "" };
 function setHTML(key, el, html) {
   if (rendered[key] === html) return;
   rendered[key] = html;
@@ -673,6 +698,48 @@ function renderApprovals(list) {
     </div>`).join(""));
 }
 
+const seenAlerts = new Set();
+let audioCtx = null;
+
+function chime() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audioCtx.currentTime;
+    [880, 1174].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const at = t0 + i * 0.16;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.07, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.14);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(at);
+      osc.stop(at + 0.15);
+    });
+  } catch (e) { /* audio is a courtesy, never a failure */ }
+}
+
+function renderAlerts(list) {
+  if (!list || !list.length) {
+    els.alerts.hidden = true;
+    if (rendered.alerts) { rendered.alerts = ""; els.alerts.innerHTML = ""; }
+    return;
+  }
+  els.alerts.hidden = false;
+  setHTML("alerts", els.alerts, list.slice(0, 3).map(a => {
+    const when = a.minutes_left < 0
+      ? `${Math.abs(a.minutes_left)} min over`
+      : `${a.minutes_left} min left`;
+    return `<span class="alert-item"><strong>SLA</strong>${a.department} on ${a.location}, ${when}</span>`;
+  }).join(""));
+
+  const fresh = list.some(a => !seenAlerts.has(a.task_id));
+  list.forEach(a => seenAlerts.add(a.task_id));
+  if (fresh && connected) chime();
+}
+
 function renderFailures(list) {
   if (!list || !list.length) {
     els.failsSection.hidden = true;
@@ -709,6 +776,7 @@ async function refresh() {
     ? `${s.tools.p95_ms} ms / ${s.tools.problems ?? 0}`
     : "no calls yet";
   renderFailures(s.tools ? s.tools.failures : []);
+  renderAlerts(s.alerts);
 
   renderRack(s.rooms);
   renderTasks(s.tasks.filter(t => t.status === "open" || t.status === "in_progress"));
@@ -968,7 +1036,8 @@ document.getElementById("reset").addEventListener("click", async () => {
   built = false;
   cells.clear();
   lastStatus = {};
-  rendered.tasks = rendered.ledger = rendered.approvals = rendered.fails = "";
+  rendered.tasks = rendered.ledger = rendered.approvals = rendered.fails = rendered.alerts = "";
+  seenAlerts.clear();
   els.floors.innerHTML = "";
   refresh();
 });
