@@ -1,6 +1,7 @@
 """FastAPI host: console state, tool endpoints for the Agora agent, reset."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -164,6 +165,34 @@ class AgentStop(BaseModel):
     agent_id: str
 
 
+class TextMessage(BaseModel):
+    message: str
+
+
+@app.post("/api/text")
+async def text_input(body: TextMessage) -> dict:
+    """Typed input, injected as if the manager had said it."""
+    text = (body.message or "").strip()
+    if not text:
+        return {"ok": False, "error": "Type something first."}
+    try:
+        return {"ok": True, **await agora.service.think(text)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/speak")
+async def speak(body: TextMessage) -> dict:
+    """Make the agent say something unprompted. Used for SLA alerts and for testing."""
+    text = (body.message or "").strip()
+    if not text:
+        return {"ok": False, "error": "Nothing to say."}
+    try:
+        return {"ok": True, **await agora.service.speak(text, priority="INTERRUPT")}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @app.post("/api/agent/stop")
 async def stop_agent(req: AgentStop) -> dict:
     try:
@@ -207,11 +236,15 @@ def _metrics(conn) -> dict:
     }
 
 
-def _raise_alerts(threshold: int = 15) -> list[dict]:
-    """Flag tasks at risk of breaching SLA, once each, and write them to the ledger."""
+def _raise_alerts(threshold: int = 15) -> tuple[list[dict], list[dict]]:
+    """Flag tasks at risk of breaching SLA, once each, and write them to the ledger.
+
+    Returns (all_alerting_tasks, newly_alerting_tasks).
+    """
     items = at_risk_tasks(threshold)
     if not items:
-        return []
+        return [], []
+    fresh: list[dict] = []
     conn = dbmod.connect()
     try:
         for a in items:
@@ -228,22 +261,41 @@ def _raise_alerts(threshold: int = 15) -> list[dict]:
                 (dbmod.now_iso(), "system", "sla_alert", "task", str(a["task_id"]),
                  json.dumps({"department": a["department"], "location": a["location"],
                              "minutes_left": a["minutes_left"]})))
+            fresh.append(a)
         conn.commit()
     finally:
         conn.close()
-    return items
+    return items, fresh
+
+
+def _alert_line(task: dict) -> str:
+    minutes = task["minutes_left"]
+    when = f"{minutes} minutes left" if minutes >= 0 else f"{abs(minutes)} minutes over"
+    return (f"Heads up: {task['department']} on {task['location']} has {when} on its SLA.")
+
+
+def _broadcast_alert(fresh: list[dict]) -> None:
+    """Make the running agent say it, without blocking the state request."""
+    if not fresh or not agora.service.current_agent_id:
+        return
+    try:
+        asyncio.create_task(agora.service.speak(_alert_line(fresh[0]), priority="APPEND"))
+    except RuntimeError:  # no running loop; the console still shows the alert
+        pass
 
 
 @app.get("/api/alerts")
 def alerts() -> dict:
-    return {"alerts": _raise_alerts()}
+    items, _ = _raise_alerts()
+    return {"alerts": items}
 
 
 @app.get("/api/state")
-def state() -> dict:
+async def state() -> dict:
     # Raise alerts before reading the audit log, so the banner and its ledger
     # entry appear in the same response.
-    alerts = _raise_alerts()
+    alerts, fresh = _raise_alerts()
+    _broadcast_alert(fresh)
     conn = dbmod.connect()
     try:
         rooms = [dict(r) for r in conn.execute(

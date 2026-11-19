@@ -143,7 +143,10 @@ else is a quiet rail.
 - **Shift ledger** — every action with its actor.
 - **Metrics** — median time to close a task, comps applied vs blocked by policy, SLA
   compliance, tool p95 and problem count.
-- **SLA band** — appears when work is at risk, chimes once per new alert.
+- **SLA band** — appears when work is at risk, chimes once per new alert, and the agent
+  announces it aloud if a session is live.
+- **Text input** — type an instruction when speaking is not an option; it reaches the
+  agent as user input.
 - **Tool failures** — only rendered when there are any.
 
 ---
@@ -224,18 +227,18 @@ scripts/spec_tests.py
 
 ---
 
-## Supported by the platform, not yet built
+## Text input and server-initiated speech
 
-- **Typed input.** `POST /v2/projects/{appid}/agents/{agentId}/think` injects text into
-  the conversation as user input, so a text fallback needs no RTM client at all. Not
-  wired up here; the recorded demo is the fallback instead.
-- **Server-initiated speech mid-session.** `POST /v2/projects/{appid}/agents/{agentId}/speak`
-  broadcasts text through TTS with `priority: INTERRUPT | APPEND | IGNORE`. This is the
-  proper home for SLA alerts while a conversation is live. Today the agent leads with
-  them when a session opens, and the console raises them in parallel.
+Two Agora REST capabilities that most voice demos skip, both wired up here:
 
-Both endpoints are unsupported under `mllm` configuration; this agent uses a cascading
-LLM, so both apply.
+- **Typed input.** If the mic or ASR fails, type instead. `POST /api/text` forwards to
+  `agent_think`, which injects the text as user input — the agent answers exactly as if
+  you had spoken it. The input box unlocks on Connect.
+- **Server-initiated speech.** `POST /api/speak` broadcasts through TTS with
+  `INTERRUPT | APPEND | IGNORE` priority. The SLA alert loop uses it: when a task crosses
+  its threshold while a conversation is live, the agent says so without being asked.
+
+Both require a cascading LLM and are unsupported under `mllm` configuration.
 
 ## Deliberately not built
 

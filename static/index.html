@@ -425,6 +425,21 @@
     align-items: center;
   }
 
+  .ask { display: flex; gap: 8px; flex: 0 1 460px; }
+  .ask input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 7px 10px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--panel);
+  }
+  .ask input:disabled { background: #F2F5F7; color: var(--ink-faint); }
+  .ask input:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+
   @media (prefers-reduced-motion: reduce) {
     .key { transition: none; }
     .skip { transition: none; }
@@ -529,7 +544,12 @@
 </aside>
 
 <footer>
-  <span>Speak to the copilot, or press Connect to start the microphone.</span>
+  <form id="text-form" class="ask" autocomplete="off">
+    <label class="sr-only" for="text-input">Type an instruction</label>
+    <input id="text-input" type="text" placeholder="Speak, or type an instruction…" disabled />
+    <button class="btn" type="submit" id="text-send" disabled>Send</button>
+  </form>
+  <span id="text-hint">Connect first to speak or type.</span>
   <button class="btn ghost" id="reset" style="margin-left:auto">Reset demo state</button>
 </footer>
 
@@ -556,6 +576,10 @@ const els = {
   drawerBody: document.getElementById("drawer-body"),
   drawerTitle: document.getElementById("drawer-title"),
   scrim: document.getElementById("scrim"),
+  textForm: document.getElementById("text-form"),
+  textInput: document.getElementById("text-input"),
+  textSend: document.getElementById("text-send"),
+  textHint: document.getElementById("text-hint"),
 };
 
 const cells = new Map();   // room_no -> { el, no, meta }
@@ -754,6 +778,13 @@ function renderFailures(list) {
     </div>`).join(""));
 }
 
+function setTextEnabled(on) {
+  els.textInput.disabled = !on;
+  els.textSend.disabled = !on;
+  els.textHint.hidden = on;
+  if (on) els.textHint.textContent = "Connect first to speak or type.";
+}
+
 async function refresh() {
   let s;
   try {
@@ -928,6 +959,7 @@ async function disconnectVoice(note) {
   micTrack = null;
   micClient = null;
   connected = false;
+  setTextEnabled(false);
 
   dot.classList.remove("live");
   label.textContent = note || "microphone off";
@@ -996,6 +1028,7 @@ document.getElementById("join").addEventListener("click", async (e) => {
     if (started.ok) {
       agentId = started.agent_id;
       connected = true;
+      setTextEnabled(true);
       label.textContent = "listening";
       btn.textContent = "Disconnect";
       btn.disabled = false;
@@ -1040,6 +1073,32 @@ document.getElementById("reset").addEventListener("click", async () => {
   seenAlerts.clear();
   els.floors.innerHTML = "";
   refresh();
+});
+
+els.textForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = els.textInput.value.trim();
+  if (!text) return;
+  els.textSend.disabled = true;
+  try {
+    const res = await fetch("/api/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    }).then(r => r.json());
+    if (res.ok) {
+      els.textInput.value = "";
+      els.textHint.hidden = true;
+    } else {
+      els.textHint.hidden = false;
+      els.textHint.textContent = res.error || "Could not send that.";
+    }
+  } catch (err) {
+    els.textHint.hidden = false;
+    els.textHint.textContent = "Could not send that.";
+  } finally {
+    els.textSend.disabled = false;
+  }
 });
 
 refresh();

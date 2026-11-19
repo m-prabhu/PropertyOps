@@ -7,6 +7,7 @@ error semantics, and idempotency of money writes.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from datetime import datetime, timedelta
@@ -266,11 +267,14 @@ def main() -> None:
     db.init(reset=True)
     from app.main import _raise_alerts  # noqa: E402 - imported late to avoid side effects
 
-    first = _raise_alerts()
+    first, fresh = _raise_alerts()
     check("a task close to breaching is flagged",
           any(t["location"] == "605" for t in first), first)
+    check("the newly flagged task is reported as fresh",
+          any(t["location"] == "605" for t in fresh), fresh)
 
-    _raise_alerts()
+    second, second_fresh = _raise_alerts()
+    check("re-polling reports nothing as fresh", second_fresh == [], second_fresh)
     conn = db.connect()
     try:
         logged = conn.execute(
@@ -285,6 +289,26 @@ def main() -> None:
     check("closing the task clears the alert",
           not any(t["task_id"] == flagged_id for t in tools.at_risk_tasks(15)),
           tools.at_risk_tasks(15))
+
+    # --- server-initiated interaction ---------------------------------
+    section("server-initiated interaction")
+
+    from app import agora_agent as ag  # noqa: E402
+
+    saved_agent = ag.service.current_agent_id
+    ag.service.current_agent_id = None
+    try:
+        asyncio.run(ag.service.speak("test"))
+        check("speak refuses without a live session", False)
+    except RuntimeError:
+        check("speak refuses without a live session", True)
+
+    try:
+        asyncio.run(ag.service.think("test"))
+        check("think refuses without a live session", False)
+    except RuntimeError:
+        check("think refuses without a live session", True)
+    ag.service.current_agent_id = saved_agent
 
     # --- envelopes ---------------------------------------------------
     section("envelope contract")

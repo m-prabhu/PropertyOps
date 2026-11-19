@@ -65,6 +65,7 @@ class AgentService:
                 app_certificate=self.app_certificate,
             )
         self._sessions: dict[str, Any] = {}
+        self.current_agent_id: str | None = None
 
     # --- readiness ---------------------------------------------------
 
@@ -237,11 +238,14 @@ class AgentService:
         )
         agent_id = await session.start()
         self._sessions[agent_id] = session
+        self.current_agent_id = agent_id
         logger.info("Agent started id=%s channel=%s", agent_id, channel)
         return {"agent_id": agent_id, "channel": channel, "status": "started"}
 
     async def stop(self, agent_id: str) -> None:
         session = self._sessions.pop(agent_id, None)
+        if self.current_agent_id == agent_id:
+            self.current_agent_id = None
         if session is not None:
             try:
                 await session.stop()
@@ -251,6 +255,36 @@ class AgentService:
         if self.client is None:
             raise RuntimeError("Agora credentials are not configured")
         await self.client.stop_agent(agent_id)
+
+    # --- server-initiated interaction --------------------------------
+
+    def _require_session(self) -> str:
+        if self.client is None:
+            raise RuntimeError("Agora credentials are not configured")
+        if not self.current_agent_id:
+            raise RuntimeError("No live agent session — connect the microphone first.")
+        return self.current_agent_id
+
+    async def speak(self, text: str, priority: str = "APPEND") -> dict:
+        """Make the running agent say something it was not asked to say."""
+        agent_id = self._require_session()
+        await self.client.agents.speak(
+            self.app_id, agent_id, text=text, priority=priority, interruptable=True)
+        logger.info("agent speak id=%s priority=%s", agent_id, priority)
+        return {"agent_id": agent_id, "text": text, "priority": priority}
+
+    async def think(self, text: str) -> dict:
+        """Inject typed text as if the manager had spoken it."""
+        agent_id = self._require_session()
+        await self.client.agent_management.agent_think(
+            self.app_id, agent_id, text=text,
+            on_listening_action="interrupt",
+            on_thinking_action="append",
+            on_speaking_action="append",
+            interruptable=True,
+        )
+        logger.info("agent think id=%s chars=%d", agent_id, len(text))
+        return {"agent_id": agent_id, "text": text}
 
 
 service = AgentService()

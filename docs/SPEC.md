@@ -320,10 +320,9 @@ buffer, it becomes a policy rule — not a constant in code.
   shows an SLA band and chimes when a new one appears, and each alert is written to
   the audit log exactly once (`sla_alerts` prevents repeats on every poll).
 
-Agaro exposes two REST endpoints for exactly this, neither wired up yet: `/speak`
-broadcasts text through TTS with `INTERRUPT | APPEND | IGNORE` priority, and `/think`
-injects text as user input. Until then, mid-session alerts reach the manager through the
-console, and the agent leads with them at the next session.
+Agaro exposes both REST endpoints and both are wired up: `/speak` broadcasts text
+through TTS with `INTERRUPT | APPEND | IGNORE` priority and is what makes a mid-session
+alert audible, while `/think` injects text as user input for the console's text box.
 
 ### W5 — Shift handover  *(P0)*
 
@@ -465,9 +464,9 @@ metrics strip. Policy engine and audit are never cut.
 | 2 | Approval parity | **Clickable and speakable.** Either path writes the same `approved_by` record. |
 | 3 | Shift identity | **Two-role staff table** (duty manager ₹5,000 / GM ₹25,000) plus a front desk at ₹750, so escalation and refusal are both demonstrable. |
 | 4 | Tool count | **14 tools for P0, confirmed.** P1 tools stay out until P0 is green. |
-| 5 | Text input fallback | **Cut for time, not for platform reasons.** `POST /agents/{id}/think` injects text as user input with no RTM client, so this is roughly an hour's work. Deprioritised behind the demo video. |
+| 5 | Text input fallback | **Built.** `POST /api/text` → `agent_think` injects the text as user input; the console unlocks the input box on Connect. |
 | 6 | Tool count | **20.** The 14 specified, plus `declineApproval`, the three W3 tools, and the two W4 tools. Agora caps an agent at 32, so there is room. |
-| 7 | Proactive SLA alert | **Partially built.** Alerts fire in the console and in the agent's opening line. Mid-session speech is supported by the platform via `POST /agents/{id}/speak` (`INTERRUPT \| APPEND \| IGNORE`) and is the next step. |
+| 7 | Proactive SLA alert | **Built.** Alerts fire in the console, in the agent's opening line, and — via `agent_speak` — out loud mid-session when a task crosses its threshold. |
 
 ## 12. Verification
 
