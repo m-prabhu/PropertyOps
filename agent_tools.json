@@ -225,6 +225,55 @@
           "required": ["room_no", "minutes", "note"]
         }
       }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "findPartnerHotel",
+        "description": "Find partner properties nearby that can take a guest tonight, nearest first. Only returns properties of the guest's booked category or better. Use this when you may have to walk someone.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "category": { "type": "string", "enum": ["deluxe", "premier", "suite"], "description": "The standard to match or beat, usually the guest's booked category." },
+            "max_distance_km": { "type": "number", "description": "Maximum distance in kilometres, or 0 for no limit." }
+          },
+          "required": ["category", "max_distance_km"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "arrangeTransport",
+        "description": "Book a car to take a guest to a partner property. Do this before walking the guest, because the walk needs a transport id.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "partner_id": { "type": "string", "description": "Partner id from findPartnerHotel, e.g. P-01" },
+            "minutes": { "type": "integer", "description": "Minutes until pickup, e.g. 15." }
+          },
+          "required": ["guest_id", "partner_id", "minutes"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "walkGuest",
+        "description": "Relocate a guest to a partner property at the hotel's expense. Requires the General Manager's approval. Call once with an empty approved_by to get the cost estimate, then again with the General Manager's name once they agree. Only call this after transport is booked.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "partner_id": { "type": "string" },
+            "transport_id": { "type": "integer", "description": "The transport id returned by arrangeTransport." },
+            "reason": { "type": "string" },
+            "approved_by": { "type": "string", "description": "General Manager's name, or an empty string before approval." }
+          },
+          "required": ["guest_id", "partner_id", "transport_id", "reason", "approved_by"]
+        }
+      }
     }
   ]
 }

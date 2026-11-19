@@ -148,6 +148,39 @@ CREATE TABLE IF NOT EXISTS approvals (
   decided_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS partner_hotels (
+  partner_id      TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  area            TEXT NOT NULL,
+  distance_km     REAL NOT NULL,
+  category        TEXT NOT NULL CHECK (category IN ('deluxe','premier','suite')),
+  rate_inr        INTEGER NOT NULL,
+  rooms_available INTEGER NOT NULL DEFAULT 0,
+  phone           TEXT,
+  active          INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS transport_requests (
+  transport_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at   TEXT NOT NULL,
+  guest_id     TEXT NOT NULL,
+  partner_id   TEXT NOT NULL,
+  pickup_at    TEXT NOT NULL,
+  fare_inr     INTEGER NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'booked'
+);
+
+CREATE TABLE IF NOT EXISTS walks (
+  walk_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at   TEXT NOT NULL,
+  guest_id     TEXT NOT NULL,
+  partner_id   TEXT NOT NULL,
+  transport_id INTEGER,
+  reason       TEXT NOT NULL,
+  approved_by  TEXT NOT NULL,
+  cost_inr     INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS policy_chunks (
   id    INTEGER PRIMARY KEY AUTOINCREMENT,
   topic TEXT NOT NULL,
@@ -197,6 +230,15 @@ GUESTS = [
     ("G-1005", "Mr. Karthik Reddy", "silver", "+91 90080 66554", "karthik.reddy@example.com", None),
     ("G-2001", "Ms. Ananya Bhat", "silver", "+91 97400 33221", "ananya.bhat@example.com", None),
     ("G-2002", "Mr. Vikram Shetty", "gold", "+91 96320 55447", "vikram.shetty@example.com", "airport pickup"),
+    ("G-2003", "Ms. Neha Kulkarni", "silver", "+91 90190 44532", "neha.kulkarni@example.com", None),
+]
+
+# Properties we can walk a guest to. Category must be equal or better.
+PARTNERS = [
+    ("P-01", "Bloom Rooms", "Indiranagar", 2.4, "deluxe", 5200, 8, "+91 80 4123 7788"),
+    ("P-02", "The Leela", "Old Madras Road", 1.8, "premier", 12500, 4, "+91 80 2521 1234"),
+    ("P-03", "Ginger", "Whitefield", 3.6, "premier", 4800, 12, "+91 80 6663 3333"),
+    ("P-04", "Taj", "Yeshwantpur", 6.2, "suite", 22000, 2, "+91 80 6690 0660"),
 ]
 
 POLICY_RULES = [
@@ -269,7 +311,7 @@ def iso_in(minutes: int) -> str:
 def seed(conn: sqlite3.Connection) -> None:
     for table in ("property", "rooms", "guests", "reservations", "folio_charges", "tasks",
                   "comps", "moves", "followups", "policy_rules", "staff", "policy_chunks",
-                  "audit", "approvals"):
+                  "audit", "approvals", "partner_hotels", "transport_requests", "walks"):
         conn.execute(f"DELETE FROM {table}")
 
     conn.execute(
@@ -331,6 +373,18 @@ def seed(conn: sqlite3.Connection) -> None:
         "INSERT INTO reservations (res_id, guest_id, room_no, arrival_date, departure_date, "
         "arrival_eta, booked_category, rate_inr, status) VALUES (?,?,?,?,?,?,?,?, 'expected')",
         ("R-9102", "G-2002", "604", tomorrow, in_two, "14:00", "deluxe", 7000),
+    )
+
+    # An arrival tonight with no room assigned: the guest a walk would apply to.
+    conn.execute(
+        "INSERT INTO reservations (res_id, guest_id, room_no, arrival_date, departure_date, "
+        "arrival_eta, booked_category, rate_inr, status) VALUES (?,?,?,?,?,?,?,?, 'expected')",
+        ("R-9103", "G-2003", None, today.isoformat(), in_two, "23:30", "deluxe", 6500),
+    )
+
+    conn.executemany(
+        "INSERT INTO partner_hotels (partner_id, name, area, distance_km, category, rate_inr, "
+        "rooms_available, phone) VALUES (?,?,?,?,?,?,?,?)", PARTNERS,
     )
 
     conn.execute(

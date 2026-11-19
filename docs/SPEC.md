@@ -14,8 +14,8 @@ One property, one role (duty manager), voice-first, mock PMS. "Complete" means
 
 | Tier | Contents | Ship by |
 |---|---|---|
-| **P0** | 14 tools · W1, W2, W5 · policy engine · console · audit · reset | 21 Nov, 12:45 IST |
-| **P1** | W3 (walk), W4 (billing dispute), guest notify, text fallback, proactive SLA alert, MCP wrapper | only if on schedule |
+| **P0** | 18 tools · W1, W2, W3, W5 · policy engine · console · audit · reset | 21 Nov, 12:45 IST |
+| **P1** | W4 (billing dispute), guest notify, proactive SLA alert, MCP wrapper | only if on schedule |
 | **P2** | Real PMS integration, payments, multi-property, RBAC, housekeeping app, forecasting, full i18n | roadmap slide only |
 
 **Non-goals, stated explicitly:** no real PMS, no payment gateway, no auth, no
@@ -321,10 +321,18 @@ trigger  "what do I need to know?"
 Read-only, no writes. This is the workflow that makes the product feel like a
 product: it has memory of its own shift.
 
-### W3 / W4  *(P1, build only if ahead)*
+### W3 — Walk a guest  *(built)*
 
-- **W3 walk a guest:** partner hotel + transport + comp + GM escalation.
-- **W4 billing dispute:** folio line items + reversal + goodwill.
+The last resort when no room can be found. Order: `findAvailableRooms` to prove
+nothing is free, `findPartnerHotel` for equal-or-better stock, `arrangeTransport`,
+then `walkGuest`. The walk is role-gated: without `approved_by` it returns
+`APPROVAL_REQUIRED` with a cost estimate, a duty manager is refused, and only a
+General Manager may authorise it. The reservation flips to `walked`, any assigned
+room is released dirty, and partner rate plus fare is recorded in `walks`.
+
+### W4 — Billing dispute  *(P1, not built)*
+
+Folio line items + reversal + goodwill.
 
 ---
 
@@ -438,6 +446,7 @@ metrics strip. Policy engine and audit are never cut.
 | 3 | Shift identity | **Two-role staff table** (duty manager ₹5,000 / GM ₹25,000) plus a front desk at ₹750, so escalation and refusal are both demonstrable. |
 | 4 | Tool count | **14 tools for P0, confirmed.** P1 tools stay out until P0 is green. |
 | 5 | Text input fallback | **Cut.** Typed input to the agent requires the Agora client toolkit plus an RTM/Signaling client; there is no REST equivalent. That is 1–2 hours of unverifiable work plus live debugging, for a feature that only matters if the mic fails — and the recorded video covers that case better. |
+| 6 | Tool count | **18.** The 14 specified, plus `declineApproval` (voice decline) and the three W3 tools. Agora caps an agent at 32, so there is room. |
 
 ## 12. Verification
 

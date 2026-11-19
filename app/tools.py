@@ -97,6 +97,11 @@ def getShiftSummary(scope: str = "shift") -> dict:
             "SELECT room_no, due_at, note FROM followups WHERE status = 'pending' LIMIT 5"))
         oos = _rows(conn.execute(
             "SELECT room_no FROM rooms WHERE status = 'out_of_service'"))
+        walks = _rows(conn.execute(
+            "SELECT w.created_at, g.name, p.name AS partner, w.approved_by, w.cost_inr "
+            "FROM walks w JOIN guests g ON g.guest_id = w.guest_id "
+            "JOIN partner_hotels p ON p.partner_id = w.partner_id "
+            "ORDER BY w.walk_id DESC LIMIT 3"))
         total = conn.execute("SELECT COUNT(*) c FROM rooms").fetchone()["c"]
         occupied = conn.execute(
             "SELECT COUNT(*) c FROM rooms WHERE status = 'occupied'").fetchone()["c"]
@@ -117,6 +122,11 @@ def getShiftSummary(scope: str = "shift") -> dict:
                      f"{first['department']} on {first['location']} in {first['minutes_to_sla']} minutes")
     if oos:
         parts.append("out of service: " + ", ".join(r["room_no"] for r in oos))
+    if walks:
+        first_walk = walks[0]
+        parts.append(
+            f"{len(walks)} guest{'s' if len(walks) > 1 else ''} walked, "
+            f"most recently {first_walk['name']} to {first_walk['partner']}")
     if followups:
         parts.append(f"{len(followups)} follow-up{'s' if len(followups) > 1 else ''} pending")
 
@@ -128,6 +138,7 @@ def getShiftSummary(scope: str = "shift") -> dict:
         "moves": moves, "comps": comps, "comp_total_inr": comp_total,
         "tasks": tasks[:6], "tasks_at_risk": len(at_risk),
         "followups": followups, "out_of_service": [r["room_no"] for r in oos],
+        "walks": walks,
     })
 
 
@@ -598,6 +609,142 @@ def scheduleFollowup(room_no: str, minutes: int, note: str) -> dict:
                   {"followup_id": cur.lastrowid, "due_at": due})
 
 
+def findPartnerHotel(category: str, max_distance_km: float = 0) -> dict:
+    """Partner properties that can take a guest tonight, nearest first."""
+    category = str(category).strip().lower()
+    if category not in CATEGORY_RANK:
+        return fail("ERROR", f"I do not have a room category called {category}.",
+                    hints={"valid": list(CATEGORY_RANK)})
+
+    with db() as conn:
+        rows = _rows(conn.execute(
+            "SELECT partner_id, name, area, distance_km, category, rate_inr, rooms_available, phone "
+            "FROM partner_hotels WHERE active = 1 AND rooms_available > 0"))
+
+    wanted = CATEGORY_RANK[category]
+    options = [r for r in rows if CATEGORY_RANK[r["category"]] >= wanted]
+    if max_distance_km:
+        try:
+            limit = float(max_distance_km)
+        except (TypeError, ValueError):
+            limit = 0
+        if limit:
+            options = [r for r in options if r["distance_km"] <= limit]
+    options.sort(key=lambda r: r["distance_km"])
+
+    if not options:
+        return fail("UNAVAILABLE",
+                    "No partner property has a room of that standard tonight.",
+                    {"partners_checked": len(rows)},
+                    hints={"next": ["findPartnerHotel"]})
+
+    first = options[0]
+    return ok(
+        f"{first['name']} in {first['area']} is {first['distance_km']} km away, "
+        f"{first['category']}, at {first['rate_inr']} rupees.",
+        {"options": options[:3]},
+    )
+
+
+def arrangeTransport(guest_id: str, partner_id: str, minutes: int = 15) -> dict:
+    """Book the car that takes the guest to the partner property."""
+    with db() as conn:
+        guest = conn.execute("SELECT name FROM guests WHERE guest_id = ?", (guest_id,)).fetchone()
+        partner = conn.execute(
+            "SELECT name, distance_km FROM partner_hotels WHERE partner_id = ?",
+            (partner_id,)).fetchone()
+        if guest is None:
+            return fail("NOT_FOUND", f"I do not have a guest {guest_id}.")
+        if partner is None:
+            return fail("NOT_FOUND", f"I do not have a partner property {partner_id}.")
+
+        try:
+            mins = max(5, int(minutes))
+        except (TypeError, ValueError):
+            mins = 15
+
+        pickup = (clock_now() + timedelta(minutes=mins)).strftime("%Y-%m-%dT%H:%M:%S")
+        fare = int(200 + partner["distance_km"] * 180)
+        cur = conn.execute(
+            "INSERT INTO transport_requests (created_at, guest_id, partner_id, pickup_at, fare_inr) "
+            "VALUES (?,?,?,?,?)",
+            (now_iso(), guest_id, partner_id, pickup, fare))
+        _audit(conn, "transport_booked", "guest", guest_id,
+               {"partner": partner["name"], "pickup_at": pickup, "fare_inr": fare})
+        return ok(f"Car booked for {guest['name']} in {mins} minutes, {fare} rupees.",
+                  {"transport_id": cur.lastrowid, "pickup_at": pickup, "fare_inr": fare,
+                   "partner": partner["name"]})
+
+
+def walkGuest(guest_id: str, partner_id: str, transport_id: int, reason: str,
+              approved_by: str = "") -> dict:
+    """Relocate a guest to a partner property. General Manager only."""
+    with db() as conn:
+        guest = conn.execute("SELECT name, tier FROM guests WHERE guest_id = ?",
+                             (guest_id,)).fetchone()
+        partner = conn.execute("SELECT name, rate_inr FROM partner_hotels WHERE partner_id = ?",
+                               (partner_id,)).fetchone()
+        transport = conn.execute(
+            "SELECT transport_id, fare_inr FROM transport_requests WHERE transport_id = ?",
+            (int(transport_id) if str(transport_id).isdigit() else -1,)).fetchone()
+        if guest is None:
+            return fail("NOT_FOUND", f"I do not have a guest {guest_id}.")
+        if partner is None:
+            return fail("NOT_FOUND", f"I do not have a partner property {partner_id}.")
+        if transport is None:
+            return fail("NOT_FOUND",
+                        "There is no car booked for this guest yet.",
+                        hints={"next": ["arrangeTransport"]})
+
+        res = conn.execute(
+            "SELECT res_id, room_no FROM reservations WHERE guest_id = ? "
+            "AND status IN ('expected','in_house') ORDER BY arrival_date LIMIT 1",
+            (guest_id,)).fetchone()
+        if res is None:
+            return fail("CONFLICT", "Nobody by that name is due to arrive or in house.")
+
+        cost = partner["rate_inr"] + transport["fare_inr"]
+
+        if not approved_by:
+            return fail(
+                "APPROVAL_REQUIRED",
+                f"Walking {guest['name']} to {partner['name']} costs about {cost} rupees. "
+                "Only the General Manager can authorise that.",
+                {"estimated_cost_inr": cost, "required_role": "gm",
+                 "partner": partner["name"]},
+                hints={"next": ["walkGuest"], "needs": "the General Manager's name"})
+
+        staff = conn.execute(
+            "SELECT name, role FROM staff WHERE lower(name) = lower(?) AND active = 1",
+            (approved_by,)).fetchone()
+        if staff is None or staff["role"] != "gm":
+            who = staff["name"] if staff else approved_by
+            return fail("APPROVAL_REQUIRED",
+                        f"{who} cannot authorise a walk. That is the General Manager's call.",
+                        {"required_role": "gm", "estimated_cost_inr": cost})
+
+        conn.execute("UPDATE reservations SET status = 'walked' WHERE res_id = ?",
+                     (res["res_id"],))
+        if res["room_no"]:
+            conn.execute(
+                "UPDATE rooms SET status = 'vacant', housekeeping = 'dirty' WHERE room_no = ?",
+                (res["room_no"],))
+        cur = conn.execute(
+            "INSERT INTO walks (created_at, guest_id, partner_id, transport_id, reason, "
+            "approved_by, cost_inr) VALUES (?,?,?,?,?,?,?)",
+            (now_iso(), guest_id, partner_id, transport["transport_id"], reason,
+             staff["name"], cost))
+        _audit(conn, "guest_walked", "guest", guest_id,
+               {"partner": partner["name"], "reason": reason,
+                "approved_by": staff["name"], "cost_inr": cost})
+
+        return ok(
+            f"{guest['name']} is walked to {partner['name']}. Car confirmed, "
+            f"{cost} rupees on our account.",
+            {"walk_id": cur.lastrowid, "partner": partner["name"],
+             "cost_inr": cost, "approved_by": staff["name"]})
+
+
 REGISTRY = {
     "getShiftSummary": getShiftSummary,
     "getRoom": getRoom,
@@ -614,4 +761,7 @@ REGISTRY = {
     "updateTask": updateTask,
     "getPolicy": getPolicy,
     "scheduleFollowup": scheduleFollowup,
+    "findPartnerHotel": findPartnerHotel,
+    "arrangeTransport": arrangeTransport,
+    "walkGuest": walkGuest,
 }

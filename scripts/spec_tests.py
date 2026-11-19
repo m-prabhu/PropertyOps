@@ -171,6 +171,37 @@ def main() -> None:
     capped = tools.extendStay("G-1002", f"{tomorrow}T13:30")
     check("extension before the ETA -> DONE", capped["ok"], capped)
 
+    # --- W3 ----------------------------------------------------------
+    section("W3 walk a guest")
+
+    partners = tools.findPartnerHotel("deluxe", 0)
+    check("partner options found for a deluxe guest",
+          partners["ok"] and partners["data"]["options"], partners)
+
+    near = tools.findPartnerHotel("deluxe", 2.0)
+    check("distance filter is applied",
+          near["ok"] and all(p["distance_km"] <= 2.0 for p in near["data"]["options"]), near)
+
+    transport = tools.arrangeTransport("G-2003", "P-01", 15)
+    check("transport booked", transport["ok"] and transport["data"]["transport_id"], transport)
+    tid = transport["data"]["transport_id"]
+
+    blocked = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "")
+    check("walk without approval -> APPROVAL_REQUIRED for the GM",
+          blocked["status"] == "APPROVAL_REQUIRED"
+          and blocked["data"]["required_role"] == "gm", blocked)
+
+    wrong = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "R. Menon")
+    check("a duty manager cannot authorise a walk",
+          wrong["status"] == "APPROVAL_REQUIRED", wrong)
+
+    done = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "A. Sharma")
+    check("GM approval completes the walk", done["ok"], done)
+
+    twice = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "A. Sharma")
+    check("the same guest cannot be walked twice",
+          twice["status"] == "CONFLICT", twice)
+
     # --- W5 ----------------------------------------------------------
     section("W5 shift handover")
 
