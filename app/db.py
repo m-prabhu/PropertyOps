@@ -343,13 +343,17 @@ def seed(conn: sqlite3.Connection) -> None:
     )
 
     conn.executemany(
-        "INSERT INTO tasks (created_at, department, location, priority, description, sla_due) "
-        "VALUES (?,?,?,?,?,?)",
+        "INSERT INTO tasks (created_at, department, location, priority, description, sla_due, assignee) "
+        "VALUES (?,?,?,?,?,?,?)",
         [
-            (now_iso(), "housekeeping", "Pool deck", "low", "Restock towels and sun loungers", iso_in(240)),
-            (now_iso(), "maintenance", "Lobby", "medium", "Replace lobby AC filter (scheduled)", iso_in(120)),
+            (now_iso(), "housekeeping", "Pool deck", "low", "Restock towels and sun loungers", iso_in(240), "M. Das"),
+            (now_iso(), "maintenance", "Lobby", "medium", "Replace lobby AC filter (scheduled)", iso_in(120), "S. Kumar"),
         ],
     )
+
+    # A little housekeeping variety so the board shows the full state model.
+    for room_no, state in (("803", "dirty"), ("702", "inspected")):
+        conn.execute("UPDATE rooms SET housekeeping = ? WHERE room_no = ?", (state, room_no))
 
     conn.executemany(
         "INSERT INTO policy_rules (code, topic, condition_json, limit_inr, requires_role, "

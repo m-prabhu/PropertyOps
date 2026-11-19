@@ -319,6 +319,81 @@
 
   .quiet { color: var(--ink-faint); font-size: 12.5px; padding: 6px 0; }
 
+  /* ---- metrics strip --------------------------------------------- */
+  .metrics {
+    display: flex;
+    gap: 34px;
+    padding: 8px 24px 9px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--rule);
+  }
+  .metric { display: flex; align-items: baseline; gap: 8px; }
+  .metric-label { color: var(--ink-faint); font-size: 11.5px; }
+  .metric-value {
+    font-family: "Archivo Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- room key interaction + housekeeping ----------------------- */
+  .key { cursor: pointer; }
+  .key:hover { border-color: var(--ink-faint); }
+  .key:hover .key-no { color: var(--ink); }
+  .hk {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+  .hk.dirty { background: #9A6B2F; }
+  .hk.inspected { background: #3E7C6A; }
+  .hk.clean { display: none; }
+  .entry .actor { color: var(--ink-faint); }
+
+  /* ---- room drawer ----------------------------------------------- */
+  .scrim { position: fixed; inset: 0; background: rgba(15,29,39,.28); z-index: 40; }
+  .drawer {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 392px;
+    max-width: 92vw;
+    background: var(--panel);
+    border-left: 1px solid var(--rule);
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -10px 0 28px -20px rgba(15,29,39,.55);
+  }
+  .drawer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .drawer-head h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .drawer-body { padding: 14px 16px 28px; overflow-y: auto; font-size: 13px; }
+  .d-group { margin-bottom: 18px; }
+  .d-group h3 {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-faint);
+    margin: 0 0 6px;
+  }
+  .d-row {
+    display: flex; justify-content: space-between; gap: 14px;
+    padding: 4px 0;
+    border-bottom: 1px solid #E4EAEE;
+  }
+  .d-row:last-child { border-bottom: 0; }
+  .d-row span:last-child { color: var(--ink-mute); text-align: right; }
+
   footer {
     padding: 0 24px 26px;
     color: var(--ink-faint);
@@ -363,6 +438,21 @@
   </div>
 </header>
 
+<div class="metrics" aria-live="polite">
+  <div class="metric">
+    <span class="metric-label">median time to close a task</span>
+    <span class="metric-value" id="m-close">—</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">comps applied / blocked by policy</span>
+    <span class="metric-value" id="m-comps">—</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">SLA compliance</span>
+    <span class="metric-value" id="m-sla">—</span>
+  </div>
+</div>
+
 <main id="main">
   <section aria-labelledby="rack-title">
     <h2 id="rack-title">Room rack</h2>
@@ -396,6 +486,15 @@
   </aside>
 </main>
 
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+  <div class="drawer-head">
+    <h2 id="drawer-title">Room</h2>
+    <button class="btn ghost" id="drawer-close" aria-label="Close room details">Close</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
 <footer>
   <span>Speak to the copilot, or press Connect to start the microphone.</span>
   <button class="btn ghost" id="reset" style="margin-left:auto">Reset demo state</button>
@@ -413,6 +512,13 @@ const els = {
   ledger: document.getElementById("ledger"),
   approvals: document.getElementById("approvals"),
   clock: document.getElementById("clock"),
+  mClose: document.getElementById("m-close"),
+  mComps: document.getElementById("m-comps"),
+  mSla: document.getElementById("m-sla"),
+  drawer: document.getElementById("drawer"),
+  drawerBody: document.getElementById("drawer-body"),
+  drawerTitle: document.getElementById("drawer-title"),
+  scrim: document.getElementById("scrim"),
 };
 
 const cells = new Map();   // room_no -> { el, no, meta }
@@ -445,9 +551,11 @@ function buildRack(rooms) {
         <div class="floor-no">${floor}</div>
         ${byFloor[floor].map(r => `
           <div class="key" data-status="${r.status}" data-room="${r.room_no}"
-               aria-label="Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}">
+               role="button" tabindex="0"
+               aria-label="Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}, housekeeping ${r.housekeeping}. Open details.">
             <span class="key-no">${r.room_no}</span>
-            <span class="key-meta">${r.status === "out_of_service" ? "out of service" : r.category}</span>
+            <span class="key-meta"><i class="hk ${r.housekeeping}" aria-hidden="true"></i><span class="key-cat">${
+              r.status === "out_of_service" ? "out of service" : r.category}</span></span>
           </div>`).join("")}
       </div>`).join("");
 
@@ -455,7 +563,10 @@ function buildRack(rooms) {
     cells.set(el.dataset.room, {
       el,
       meta: el.querySelector(".key-meta"),
+      cat: el.querySelector(".key-cat"),
+      hk: el.querySelector(".hk"),
       status: el.dataset.status,
+      housekeeping: el.querySelector(".hk").classList[1],
     });
   });
   built = true;
@@ -466,12 +577,19 @@ function renderRack(rooms) {
   for (const r of rooms) {
     const cell = cells.get(r.room_no);
     if (!cell) continue;
+
+    if (cell.housekeeping !== r.housekeeping) {
+      cell.hk.classList.remove(cell.housekeeping);
+      cell.hk.classList.add(r.housekeeping);
+      cell.housekeeping = r.housekeeping;
+    }
+
     if (cell.status !== r.status) {
       cell.status = r.status;
       cell.el.dataset.status = r.status;
-      cell.meta.textContent = r.status === "out_of_service" ? "out of service" : r.category;
+      cell.cat.textContent = r.status === "out_of_service" ? "out of service" : r.category;
       cell.el.setAttribute("aria-label",
-        `Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}`);
+        `Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}, housekeeping ${r.housekeeping}`);
       if (lastStatus[r.room_no] && !reduceMotion.matches && cell.el.animate) {
         cell.el.animate(
           [{ boxShadow: "0 0 0 2px rgba(10, 92, 158, .55)" },
@@ -501,7 +619,7 @@ function renderTasks(tasks) {
       <div class="task">
         <div>
           <div class="task-what">${t.description}</div>
-          <div class="task-where">${t.department} · room ${t.location} · ${t.priority}</div>
+          <div class="task-where">${t.department}, room ${t.location}, ${t.priority}, ${t.assignee || "unassigned"}</div>
         </div>
         <div class="task-clock ${state}">${clock}</div>
         <div class="bar ${state}"><i style="width:${pct}%"></i></div>
@@ -519,7 +637,7 @@ function renderLedger(audit) {
     return `
       <div class="entry ${blocked ? "blocked" : ""}">
         <time datetime="${a.ts}">${timeFmt.format(new Date(a.ts))}</time>
-        <div><b>${a.action.replace(/_/g, " ")}</b> <span class="who">${a.detail}</span></div>
+        <div><b>${a.action.replace(/_/g, " ")}</b> <span class="actor">${a.actor}</span> <span class="who">${a.detail}</span></div>
       </div>`;
   }).join(""));
 }
@@ -557,6 +675,11 @@ async function refresh() {
   els.tasks.textContent = s.stats.open_tasks;
   els.comp.textContent = money(s.stats.comp_total_inr);
 
+  const m = s.metrics || {};
+  els.mClose.textContent = m.median_close_min == null ? "no closures yet" : m.median_close_min + " min";
+  els.mComps.textContent = `${m.comps_applied ?? 0} / ${m.comps_blocked ?? 0}`;
+  els.mSla.textContent = `${m.sla_compliance_pct ?? 100}%`;
+
   renderRack(s.rooms);
   renderTasks(s.tasks.filter(t => t.status === "open" || t.status === "in_progress"));
   renderLedger(s.audit);
@@ -579,6 +702,100 @@ document.addEventListener("click", async (e) => {
   } finally {
     refresh();
   }
+});
+
+/* ---- room drawer --------------------------------------------------- */
+let lastRoomKey = null;
+
+function dRow(label, value) {
+  return `<div class="d-row"><span>${label}</span><span>${value ?? "—"}</span></div>`;
+}
+
+function drawerHTML(d) {
+  const r = d.room;
+  const blocks = [];
+
+  blocks.push(`<div class="d-group"><h3>Room</h3>
+    ${dRow("status", r.status.replace(/_/g, " "))}
+    ${dRow("category", r.category)}
+    ${dRow("floor", r.floor)}
+    ${dRow("rate", money(r.rate_inr))}
+    ${dRow("housekeeping", r.housekeeping)}
+  </div>`);
+
+  blocks.push(d.guest
+    ? `<div class="d-group"><h3>Guest</h3>
+        ${dRow("name", d.guest.name)}
+        ${dRow("tier", d.guest.tier)}
+        ${dRow("departure", d.guest.departure_date)}
+        ${dRow("phone", d.guest.phone)}
+      </div>`
+    : `<div class="d-group"><h3>Guest</h3><div class="quiet">No guest in house.</div></div>`);
+
+  if (d.tasks.length) {
+    blocks.push(`<div class="d-group"><h3>Tasks</h3>${
+      d.tasks.map(t => dRow(t.description,
+        `${t.status.replace(/_/g, " ")}${t.assignee ? ", " + t.assignee : ""}`)).join("")}</div>`);
+  }
+
+  if (d.moves.length) {
+    blocks.push(`<div class="d-group"><h3>Room moves</h3>${
+      d.moves.map(m => dRow(
+        `${timeFmt.format(new Date(m.created_at))} ${m.from_room} to ${m.to_room}`,
+        m.reason)).join("")}</div>`);
+  }
+
+  if (d.charges.length) {
+    blocks.push(`<div class="d-group"><h3>Folio</h3>${
+      d.charges.map(c => dRow(c.description, money(c.amount_inr))).join("")}</div>`);
+  }
+
+  if (d.events.length) {
+    blocks.push(`<div class="d-group"><h3>Recent activity</h3>${
+      d.events.map(e => dRow(
+        `${timeFmt.format(new Date(e.created_at))} ${e.action.replace(/_/g, " ")}`,
+        e.detail)).join("")}</div>`);
+  }
+
+  return blocks.join("");
+}
+
+async function openRoom(roomNo, keyEl) {
+  lastRoomKey = keyEl || null;
+  els.drawerTitle.textContent = "Room " + roomNo;
+  els.drawerBody.innerHTML = `<div class="quiet">Loading…</div>`;
+  els.drawer.hidden = false;
+  els.scrim.hidden = false;
+  document.getElementById("drawer-close").focus();
+
+  try {
+    const res = await fetch("/api/room/" + encodeURIComponent(roomNo));
+    if (!res.ok) throw new Error(String(res.status));
+    els.drawerBody.innerHTML = drawerHTML(await res.json());
+  } catch (e) {
+    els.drawerBody.innerHTML =
+      `<div class="quiet">Could not load this room. Close the panel and try again.</div>`;
+  }
+}
+
+function closeRoom() {
+  els.drawer.hidden = true;
+  els.scrim.hidden = true;
+  els.drawerBody.innerHTML = "";
+  if (lastRoomKey) { lastRoomKey.focus(); lastRoomKey = null; }
+}
+
+document.addEventListener("click", (e) => {
+  const key = e.target.closest(".key");
+  if (key) { openRoom(key.dataset.room, key); return; }
+  if (e.target.id === "scrim" || e.target.id === "drawer-close") closeRoom();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.drawer.hidden) { closeRoom(); return; }
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const key = e.target.closest && e.target.closest(".key");
+  if (key) { e.preventDefault(); openRoom(key.dataset.room, key); }
 });
 
 /* ---- mic + agent -------------------------------------------------- */

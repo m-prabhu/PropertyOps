@@ -112,6 +112,40 @@ async def stop_agent(req: AgentStop) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+def _metrics(conn) -> dict:
+    """The three numbers the spec asks for: resolve time, policy blocks, SLA."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT created_at, closed_at, sla_due FROM tasks")]
+    closed = [r for r in rows if r.get("closed_at")]
+    durations = sorted(
+        (datetime.fromisoformat(r["closed_at"]) - datetime.fromisoformat(r["created_at"]))
+        .total_seconds() / 60 for r in closed)
+    median = None
+    if durations:
+        mid = len(durations) // 2
+        median = (durations[mid] if len(durations) % 2
+                  else (durations[mid - 1] + durations[mid]) / 2)
+
+    now = clock_now()
+    breached = 0
+    for r in rows:
+        end = datetime.fromisoformat(r["closed_at"]) if r.get("closed_at") else now
+        if end > datetime.fromisoformat(r["sla_due"]):
+            breached += 1
+
+    total = len(rows)
+    return {
+        "median_close_min": round(median) if median is not None else None,
+        "tasks_closed": len(closed),
+        "comps_applied": conn.execute("SELECT COUNT(*) c FROM comps").fetchone()["c"],
+        "comps_blocked": conn.execute(
+            "SELECT COUNT(*) c FROM audit WHERE action = 'comp_blocked'").fetchone()["c"],
+        "tasks_total": total,
+        "tasks_breached": breached,
+        "sla_compliance_pct": round((total - breached) / total * 100) if total else 100,
+    }
+
+
 @app.get("/api/state")
 def state() -> dict:
     conn = dbmod.connect()
@@ -120,7 +154,7 @@ def state() -> dict:
             "SELECT room_no, floor, category, status, housekeeping, rate_inr FROM rooms "
             "ORDER BY floor DESC, room_no")]
         tasks = [dict(r) for r in conn.execute(
-            "SELECT task_id, department, location, priority, description, status, sla_due "
+            "SELECT task_id, department, location, priority, description, status, sla_due, assignee "
             "FROM tasks ORDER BY status, sla_due ASC LIMIT 12")]
         comps = [dict(r) for r in conn.execute(
             "SELECT c.comp_id, c.amount_inr, c.approved_by, c.rule_code, c.created_at, g.name "
@@ -143,6 +177,7 @@ def state() -> dict:
         oos = sum(1 for r in rooms if r["status"] == "out_of_service")
         comp_total = conn.execute(
             "SELECT COALESCE(SUM(amount_inr),0) s FROM comps").fetchone()["s"]
+        metrics = _metrics(conn)
     finally:
         conn.close()
 
@@ -167,12 +202,53 @@ def state() -> dict:
         "followups": followups,
         "staff": staff,
         "approvals": approvals,
+        "metrics": metrics,
         "stats": {
             "occupancy_pct": round(occupied / total * 100, 1) if total else 0,
             "out_of_service": oos,
             "open_tasks": sum(1 for t in tasks if t["status"] in ("open", "in_progress")),
             "comp_total_inr": comp_total,
         },
+    }
+
+
+@app.get("/api/room/{room_no}")
+def room_detail(room_no: str) -> dict:
+    """Everything the drawer shows for one room."""
+    conn = dbmod.connect()
+    try:
+        room = conn.execute("SELECT * FROM rooms WHERE room_no = ?", (room_no,)).fetchone()
+        if room is None:
+            raise HTTPException(404, f"Unknown room {room_no}")
+        res = conn.execute(
+            """SELECT r.res_id, r.arrival_date, r.departure_date, r.rate_inr, r.status,
+                      g.name, g.tier, g.phone
+               FROM reservations r JOIN guests g ON g.guest_id = r.guest_id
+               WHERE r.room_no = ? AND r.status = 'in_house'""", (room_no,)).fetchone()
+        tasks = [dict(t) for t in conn.execute(
+            "SELECT task_id, department, priority, description, status, sla_due, assignee "
+            "FROM tasks WHERE location = ? ORDER BY status, sla_due", (room_no,))]
+        moves = [dict(m) for m in conn.execute(
+            "SELECT created_at, from_room, to_room, reason FROM moves "
+            "WHERE from_room = ? OR to_room = ? ORDER BY id DESC LIMIT 5", (room_no, room_no))]
+        charges = []
+        if res:
+            charges = [dict(c) for c in conn.execute(
+                "SELECT description, amount_inr, status FROM folio_charges "
+                "WHERE res_id = ? ORDER BY charge_id DESC LIMIT 5", (res["res_id"],))]
+        events = [dict(e) for e in conn.execute(
+            "SELECT created_at, actor, action, detail_json FROM audit "
+            "WHERE entity_id = ? ORDER BY id DESC LIMIT 6", (room_no,))]
+    finally:
+        conn.close()
+
+    return {
+        "room": dict(room),
+        "guest": dict(res) if res else None,
+        "tasks": tasks,
+        "moves": moves,
+        "charges": charges,
+        "events": [{**e, "detail": _readable(e["detail_json"])} for e in events],
     }
 
 
