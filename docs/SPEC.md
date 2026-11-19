@@ -1,4 +1,4 @@
-﻿# PropertyOps â€” Technical Spec (v1, P0)
+# PropertyOps â€” Technical Spec (v1, P0)
 
 **Product:** PropertyOps â€” Voice AI Ops Copilot for Hotel Front Desks
 **Track:** Build with Agora BLR Â· **Track 2 / `ps31`** â€” Voice AI at Work: Beyond the Call Center

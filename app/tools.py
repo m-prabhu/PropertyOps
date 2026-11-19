@@ -1,4 +1,4 @@
-﻿"""The 14 P0 tools.
+"""The 14 P0 tools.
 
 Every tool returns the same envelope (docs/SPEC.md Â§4):
     {ok, status, message, data, hints}
@@ -171,12 +171,12 @@ def findAvailableRooms(category: str, floor: int | None = None,
     upgrades = [r for r in vacant if CATEGORY_RANK[r["category"]] > CATEGORY_RANK[category]]
 
     on_floor, elsewhere = [], same
-    if floor is not None:
+    if floor:
         try:
             wanted = int(floor)
         except (TypeError, ValueError):
             wanted = None
-        if wanted is not None:
+        if wanted:
             on_floor = [r for r in same if r["floor"] == wanted]
             elsewhere = sorted([r for r in same if r["floor"] != wanted],
                                key=lambda r: abs(r["floor"] - wanted))
@@ -434,21 +434,22 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
     })
 
     if decision["decision"] in ("ALLOW", "ALLOW_APPROVED"):
+        approver = decision.get("approved_by") or approved_by or None
         with db() as conn:
             cur = conn.execute(
                 "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "
                 "approved_by, request_id) VALUES (?,?,?,?,?,?,?)",
                 (now_iso(), guest_id, amount, reason, decision["rule_code"],
-                 decision.get("approved_by") or approved_by, request_id))
-            if decision.get("approved_by") or approved_by:
+                 approver, request_id))
+            if approver:
                 conn.execute(
                     "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
                     "WHERE guest_id = ? AND amount_inr = ? AND status = 'pending'",
-                    (decision.get("approved_by") or approved_by, now_iso(), guest_id, amount))
+                    (approver, now_iso(), guest_id, amount))
             _audit(conn, "comp_applied", "guest", guest_id,
                    {"amount_inr": amount, "reason": reason, "rule_code": decision["rule_code"],
-                    "approved_by": decision.get("approved_by") or approved_by})
-        who = decision.get("approved_by")
+                    "approved_by": approver})
+        who = approver
         tail = f" Approved by {who}." if who else " Within the guest's ceiling."
         return ok(f"Compensation of {amount} rupees recorded for {guest['name']}." + tail,
                   {"comp_id": cur.lastrowid, "amount_inr": amount,

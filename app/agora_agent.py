@@ -110,7 +110,7 @@ class AgentService:
         if not self.tools_base:
             raise RuntimeError("TOOLS_BASE_URL is not configured")
 
-        spec = json.loads(TOOLS_PATH.read_text(encoding="utf-8"))
+        spec = json.loads(TOOLS_PATH.read_text(encoding="utf-8-sig"))
         payloads = []
         for entry in spec["tools"]:
             fn = entry["function"]
@@ -135,7 +135,7 @@ class AgentService:
 
     def _build_agent(self) -> AgoraAgent:
         instructions = (
-            PROMPT_PATH.read_text(encoding="utf-8")
+            PROMPT_PATH.read_text(encoding="utf-8-sig")
             if PROMPT_PATH.exists() else DEFAULT_INSTRUCTIONS
         )
 

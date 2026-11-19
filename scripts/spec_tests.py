@@ -1,4 +1,4 @@
-﻿"""Phase P1 acceptance tests.
+"""Phase P1 acceptance tests.
 
     .venv\\Scripts\\python.exe -m scripts.spec_tests
 

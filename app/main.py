@@ -1,4 +1,4 @@
-﻿"""FastAPI host: console state, tool endpoints for the Agora agent, reset."""
+"""FastAPI host: console state, tool endpoints for the Agora agent, reset."""
 from __future__ import annotations
 
 import json

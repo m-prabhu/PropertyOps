@@ -1,17 +1,25 @@
-﻿{
-  "_comment": "Paste this array into mllm.tools when starting the Agora Conversational AI agent. Also set advanced_features.enable_tools = true. Base URL must be publicly reachable OR you run the agent locally against a tunnel.",
+{
+  "_comment": "All 14 tools. Every parameter is REQUIRED because Agora's server block fills each body field from a {{args.x}} placeholder, and a missing argument makes the call fail before it reaches us. Optional concepts use sentinels: empty string = not provided, floor 0 = any floor.",
   "tools": [
     {
       "type": "function",
       "function": {
-        "name": "getGuestContext",
-        "description": "Look up the room and the in-house guest in it: name, tier, rate, checkout date, comps already given, and any open department tasks on that room. Always call this first when the manager names a room.",
+        "name": "getShiftSummary",
+        "description": "Summarise the current shift: room moves, compensations and who approved them, open tasks with minutes until SLA breach, pending follow-ups, and out-of-service rooms. Use this when the manager asks what happened or what needs attention. Takes no arguments.",
+        "parameters": { "type": "object", "properties": {}, "required": [] }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "getRoom",
+        "description": "Read one room's status, housekeeping state, category, nightly rate and current guest. Use for a quick status check when you already know the room number.",
         "parameters": {
           "type": "object",
           "properties": {
-            "room_number": { "type": "string", "description": "Room number, e.g. 412" }
+            "room_no": { "type": "string", "description": "Room number, e.g. 408" }
           },
-          "required": ["room_number"]
+          "required": ["room_no"]
         }
       }
     },
@@ -19,28 +27,74 @@
       "type": "function",
       "function": {
         "name": "findAvailableRooms",
-        "description": "List vacant rooms in the requested category, split into matches on the requested floor, same-category rooms on other floors, and upgrade options. Returns empty lists when nothing is free - report that honestly.",
+        "description": "List vacant rooms in a category, split into matches on the requested floor, same-category rooms on other floors, and upgrade options. Returns empty lists when nothing is free, which you must report honestly.",
         "parameters": {
           "type": "object",
           "properties": {
             "category": { "type": "string", "enum": ["deluxe", "premier", "suite"] },
-            "floor": { "type": "integer", "description": "Preferred floor, e.g. 4. Omit if the manager does not care." }
+            "floor": { "type": "integer", "description": "Preferred floor, e.g. 4. Use 0 when the floor does not matter." },
+            "features": { "type": "string", "description": "Feature text to filter on, or an empty string for no filter." }
           },
-          "required": ["category"]
+          "required": ["category", "floor", "features"]
         }
       }
     },
     {
       "type": "function",
       "function": {
-        "name": "getPolicy",
-        "description": "Search the hotel operations policy manual. Use before any compensation, upgrade, room move or escalation decision. Never state a rupee limit from memory.",
+        "name": "setRoomStatus",
+        "description": "Change a room's status: vacant, occupied, blocked, or out_of_service. Refuses to return a room to vacant while a defect task is still open.",
         "parameters": {
           "type": "object",
           "properties": {
-            "topic": { "type": "string", "description": "e.g. 'comp limit for gold guest', 'room move rule', 'escalation'" }
+            "room_no": { "type": "string" },
+            "status": { "type": "string", "enum": ["vacant", "occupied", "blocked", "out_of_service"] },
+            "reason": { "type": "string" }
           },
-          "required": ["topic"]
+          "required": ["room_no", "status", "reason"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "getGuestContext",
+        "description": "Look up the in-house guest in a room: name, loyalty tier, nightly rate, departure date, compensation already given, their current comp ceiling, and any open tasks on that room. Always call this first when the manager names a room.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "room_no": { "type": "string" }
+          },
+          "required": ["room_no"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "searchGuest",
+        "description": "Find a guest by name or phone number when the manager does not know the room.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Name fragment or phone number" }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "getArrivals",
+        "description": "List expected arrivals with their estimated arrival time and booked category. Use before extending any stay, to find the next guest due into that room.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "room_no": { "type": "string", "description": "Room to check, or an empty string for the whole property." },
+            "date": { "type": "string", "description": "Date as YYYY-MM-DD, or an empty string for today." }
+          },
+          "required": ["room_no", "date"]
         }
       }
     },
@@ -48,7 +102,7 @@
       "type": "function",
       "function": {
         "name": "moveRoom",
-        "description": "Move an in-house guest to a vacant room. Sets the old room to out_of_service. Fails if the target room is not vacant - read available_now and retry with a valid room, or ask the manager.",
+        "description": "Move an in-house guest to a vacant room. Sets the old room to out_of_service. Fails if the target is not vacant, returning the rooms that are available instead.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -64,8 +118,40 @@
     {
       "type": "function",
       "function": {
+        "name": "extendStay",
+        "description": "Extend a guest's departure. Capped at the next arrival's estimated time on that room; if the requested time is later, returns CONFLICT with latest_possible_checkout and you must offer that instead.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "new_departure": { "type": "string", "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM" }
+          },
+          "required": ["guest_id", "new_departure"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "applyComp",
+        "description": "Record a guest compensation in rupees. The server enforces the tier ceiling. If it returns APPROVAL_REQUIRED, stop and ask the duty manager to approve the amount explicitly, then call again with approved_by set to their name. Pass an empty string for approved_by on the first attempt.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "amount_inr": { "type": "integer" },
+            "reason": { "type": "string" },
+            "approved_by": { "type": "string", "description": "Name of the staff member who approved it, or an empty string when not yet approved." }
+          },
+          "required": ["guest_id", "amount_inr", "reason", "approved_by"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "createDepartmentTask",
-        "description": "Raise a work order for housekeeping or maintenance with an SLA clock.",
+        "description": "Raise a work order for housekeeping, maintenance, front desk, or security, with an SLA clock based on priority.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -81,17 +167,30 @@
     {
       "type": "function",
       "function": {
-        "name": "applyComp",
-        "description": "Record a guest compensation in INR. The server enforces the tier ceiling: if it returns APPROVAL_REQUIRED, stop and ask the duty manager to approve explicitly, then call again with approved_by set to their name.",
+        "name": "updateTask",
+        "description": "Close, start, or cancel a department task. Closing the last defect task on a room allows it to return to sale.",
         "parameters": {
           "type": "object",
           "properties": {
-            "guest_id": { "type": "string" },
-            "amount_inr": { "type": "integer" },
-            "reason": { "type": "string" },
-            "approved_by": { "type": "string", "description": "Only set after the manager has verbally approved an amount above the ceiling." }
+            "task_id": { "type": "integer" },
+            "status": { "type": "string", "enum": ["open", "in_progress", "done", "cancelled"] },
+            "note": { "type": "string", "description": "Optional note, or an empty string." }
           },
-          "required": ["guest_id", "amount_inr", "reason"]
+          "required": ["task_id", "status", "note"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "getPolicy",
+        "description": "Search the hotel operations policy manual. Use before any compensation, upgrade, room move, or escalation decision, and quote the actual limit you read. Never state a rupee limit from memory.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "topic": { "type": "string", "description": "e.g. 'comp limit for gold guest', 'late checkout', 'escalation'" }
+          },
+          "required": ["topic"]
         }
       }
     },
@@ -99,7 +198,7 @@
       "type": "function",
       "function": {
         "name": "scheduleFollowup",
-        "description": "Set a reminder to verify something later, e.g. check that a repair is done.",
+        "description": "Set a reminder to verify something later, for example checking that a repair was completed.",
         "parameters": {
           "type": "object",
           "properties": {
