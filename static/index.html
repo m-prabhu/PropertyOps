@@ -777,7 +777,9 @@ function drawerHTML(d) {
 
   if (d.charges.length) {
     blocks.push(`<div class="d-group"><h3>Folio</h3>${
-      d.charges.map(c => dRow(c.description, money(c.amount_inr))).join("")}</div>`);
+      d.charges.map(c => dRow(
+        c.description + (c.status === "reversed" ? " (reversed)" : ""),
+        money(c.amount_inr))).join("")}</div>`);
   }
 
   if (d.events.length) {

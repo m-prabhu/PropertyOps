@@ -274,6 +274,36 @@
           "required": ["guest_id", "partner_id", "transport_id", "reason", "approved_by"]
         }
       }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "getFolio",
+        "description": "Read a guest's bill: every posted line item, anything already reversed, and the balance. Always call this before discussing a billing dispute, and quote the actual line rather than an amount you remember.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" }
+          },
+          "required": ["guest_id"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "reverseCharge",
+        "description": "Correct a charge that was wrong, using the charge_id from getFolio. This fixes the record; it is not a goodwill comp. If it returns APPROVAL_REQUIRED, ask the manager for their name and call again with approved_by.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "charge_id": { "type": "integer", "description": "The charge_id from getFolio." },
+            "reason": { "type": "string", "description": "Why the charge is wrong." },
+            "approved_by": { "type": "string", "description": "Manager's name when the amount needs approval, or an empty string." }
+          },
+          "required": ["charge_id", "reason", "approved_by"]
+        }
+      }
     }
   ]
 }

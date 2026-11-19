@@ -257,6 +257,8 @@ POLICY_RULES = [
      "A late checkout fee is waived only with duty manager sign-off.", 10),
     ("RATE-CHANGE", "rate_change", {}, 0, "duty_manager", None,
      "A mid-stay rate change is a compensation and needs an approver.", 10),
+    ("REVERSAL-SMALL", "reversal", {}, 1500, None, None,
+     "Reversals up to 1500 INR can be corrected at the desk without further approval.", 10),
     ("ESCALATE-PLAT", "escalation", {"tier": "platinum"}, None, None, "gm",
      "Platinum guests always escalate to the General Manager.", 100),
 ]

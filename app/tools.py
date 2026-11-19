@@ -747,6 +747,85 @@ def walkGuest(guest_id: str, partner_id: str, transport_id: int, reason: str,
              "cost_inr": cost, "approved_by": staff["name"]})
 
 
+def getFolio(guest_id: str) -> dict:
+    """The guest's bill: every posted line, what has been reversed, and the balance."""
+    with db() as conn:
+        res = conn.execute(
+            "SELECT res_id, room_no, status FROM reservations WHERE guest_id = ? "
+            "AND status IN ('in_house','expected','checked_out') "
+            "ORDER BY arrival_date DESC LIMIT 1", (guest_id,)).fetchone()
+        if res is None:
+            return fail("NOT_FOUND", f"No reservation on file for {guest_id}.")
+        guest = conn.execute("SELECT name FROM guests WHERE guest_id = ?",
+                             (guest_id,)).fetchone()
+        charges = _rows(conn.execute(
+            "SELECT charge_id, category, description, amount_inr, posted_at, status, "
+            "reversed_reason FROM folio_charges WHERE res_id = ? ORDER BY charge_id",
+            (res["res_id"],)))
+
+    posted = [c for c in charges if c["status"] == "posted"]
+    reversed_lines = [c for c in charges if c["status"] == "reversed"]
+    balance = sum(c["amount_inr"] for c in posted)
+
+    parts = [f"{guest['name']}'s folio has {len(posted)} open "
+             f"charge{'s' if len(posted) != 1 else ''} totalling {balance} rupees"]
+    if reversed_lines:
+        parts.append(f"{len(reversed_lines)} already reversed")
+    return ok("; ".join(parts) + ".",
+              {"res_id": res["res_id"], "room_no": res["room_no"],
+               "charges": charges, "balance_inr": balance,
+               "reversed_inr": sum(c["amount_inr"] for c in reversed_lines)})
+
+
+def reverseCharge(charge_id: int, reason: str, approved_by: str = "") -> dict:
+    """Correct a posted charge. This fixes the record; it is not a goodwill comp."""
+    try:
+        cid = int(charge_id)
+    except (TypeError, ValueError):
+        return fail("ERROR", "I need the charge number, not a description.")
+
+    with db() as conn:
+        charge = conn.execute("SELECT * FROM folio_charges WHERE charge_id = ?",
+                              (cid,)).fetchone()
+        if charge is None:
+            return fail("NOT_FOUND", f"No charge number {cid} on file.")
+        if charge["status"] == "reversed":
+            return fail("CONFLICT",
+                        f"Charge {cid} has already been reversed, so nothing more to correct.",
+                        {"charge_id": cid})
+
+    decision = policy.evaluate("reversal", {
+        "amount_inr": charge["amount_inr"],
+        "approved_by": approved_by or None,
+    })
+
+    if decision["decision"] == "REQUIRE_APPROVAL":
+        return fail("APPROVAL_REQUIRED", decision["message"],
+                    {"charge_id": cid, "amount_inr": charge["amount_inr"],
+                     "limit_inr": decision["limit_inr"],
+                     "required_role": decision["required_role"],
+                     "rule_code": decision["rule_code"]},
+                    hints={"next": ["reverseCharge"], "needs": "approved_by"})
+
+    approver = None
+    if decision["decision"] == "ALLOW_APPROVED":
+        approver = decision.get("approved_by") or None
+
+    with db() as conn:
+        conn.execute(
+            "UPDATE folio_charges SET status = 'reversed', reversed_reason = ? "
+            "WHERE charge_id = ? AND status = 'posted'",
+            (reason, cid))
+        _audit(conn, "charge_reversed", "charge", str(cid),
+               {"description": charge["description"], "amount_inr": charge["amount_inr"],
+                "reason": reason, "approved_by": approver})
+        return ok(
+            f"Reversed {charge['description']} at {charge['amount_inr']} rupees. "
+            "That was a correction, not a goodwill comp.",
+            {"charge_id": cid, "amount_inr": charge["amount_inr"],
+             "approved_by": approver, "reason": reason})
+
+
 REGISTRY = {
     "getShiftSummary": getShiftSummary,
     "getRoom": getRoom,
@@ -766,4 +845,6 @@ REGISTRY = {
     "findPartnerHotel": findPartnerHotel,
     "arrangeTransport": arrangeTransport,
     "walkGuest": walkGuest,
+    "getFolio": getFolio,
+    "reverseCharge": reverseCharge,
 }

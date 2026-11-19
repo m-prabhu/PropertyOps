@@ -14,8 +14,8 @@ One property, one role (duty manager), voice-first, mock PMS. "Complete" means
 
 | Tier | Contents | Ship by |
 |---|---|---|
-| **P0** | 18 tools · W1, W2, W3, W5 · policy engine · console · audit · reset | 21 Nov, 12:45 IST |
-| **P1** | W4 (billing dispute), guest notify, proactive SLA alert, MCP wrapper | only if on schedule |
+| **P0** | 20 tools · W1–W5 · policy engine · console · audit · reset | 21 Nov, 12:45 IST |
+| **P1** | guest notify, proactive SLA alert, MCP wrapper | only if on schedule |
 | **P2** | Real PMS integration, payments, multi-property, RBAC, housekeeping app, forecasting, full i18n | roadmap slide only |
 
 **Non-goals, stated explicitly:** no real PMS, no payment gateway, no auth, no
@@ -330,9 +330,13 @@ then `walkGuest`. The walk is role-gated: without `approved_by` it returns
 General Manager may authorise it. The reservation flips to `walked`, any assigned
 room is released dirty, and partner rate plus fare is recorded in `walks`.
 
-### W4 — Billing dispute  *(P1, not built)*
+### W4 — Billing dispute  *(built)*
 
-Folio line items + reversal + goodwill.
+`getFolio` returns every posted line plus anything already reversed, so the agent
+argues from the actual bill rather than memory. `reverseCharge` corrects a line and
+is deliberately distinct from a comp: a reversal fixes revenue, a comp absorbs it.
+The `reversal` policy topic allows ₹1,500 at the desk and otherwise follows the same
+role ladder as comps. A line can only be reversed once.
 
 ---
 
@@ -446,7 +450,7 @@ metrics strip. Policy engine and audit are never cut.
 | 3 | Shift identity | **Two-role staff table** (duty manager ₹5,000 / GM ₹25,000) plus a front desk at ₹750, so escalation and refusal are both demonstrable. |
 | 4 | Tool count | **14 tools for P0, confirmed.** P1 tools stay out until P0 is green. |
 | 5 | Text input fallback | **Cut.** Typed input to the agent requires the Agora client toolkit plus an RTM/Signaling client; there is no REST equivalent. That is 1–2 hours of unverifiable work plus live debugging, for a feature that only matters if the mic fails — and the recorded video covers that case better. |
-| 6 | Tool count | **18.** The 14 specified, plus `declineApproval` (voice decline) and the three W3 tools. Agora caps an agent at 32, so there is room. |
+| 6 | Tool count | **20.** The 14 specified, plus `declineApproval`, the three W3 tools, and the two W4 tools. Agora caps an agent at 32, so there is room. |
 
 ## 12. Verification
 

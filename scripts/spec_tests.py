@@ -202,6 +202,42 @@ def main() -> None:
     check("the same guest cannot be walked twice",
           twice["status"] == "CONFLICT", twice)
 
+    # --- W4 ----------------------------------------------------------
+    section("W4 billing dispute")
+
+    folio = tools.getFolio("G-1001")
+    check("folio returns posted line items and a balance",
+          folio["ok"] and len(folio["data"]["charges"]) >= 2
+          and folio["data"]["balance_inr"] > 0, folio)
+
+    charges = folio["data"]["charges"]
+    minibar = next(c for c in charges if "inibar" in c["description"])
+    room_charge = next(c for c in charges if "Room charge" in c["description"])
+
+    small = tools.reverseCharge(minibar["charge_id"], "guest never touched it", "")
+    check("a small reversal needs no approver",
+          small["ok"] and small["data"]["approved_by"] is None, small)
+
+    twice = tools.reverseCharge(minibar["charge_id"], "again", "")
+    check("the same charge cannot be reversed twice",
+          twice["status"] == "CONFLICT", twice)
+
+    big = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "")
+    check("a large reversal -> APPROVAL_REQUIRED",
+          big["status"] == "APPROVAL_REQUIRED" and big["data"]["required_role"], big)
+
+    weak = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "R. Menon")
+    check("approval below the amount is refused",
+          weak["status"] == "APPROVAL_REQUIRED", weak)
+
+    done = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "A. Sharma")
+    check("GM approval completes the reversal",
+          done["ok"] and done["data"]["approved_by"] == "A. Sharma", done)
+
+    after = tools.getFolio("G-1001")
+    check("reversed lines leave the balance",
+          after["ok"] and after["data"]["balance_inr"] == 0, after)
+
     # --- W5 ----------------------------------------------------------
     section("W5 shift handover")
 
