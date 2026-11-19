@@ -126,8 +126,12 @@ def config() -> dict:
 
 @app.get("/health")
 def health() -> dict:
-    """Render health check. Kept cheap: no DB, no Agora calls."""
-    return {"ok": True, "service": "propertyops"}
+    """Render health check. Cheap: no DB, no Agora calls.
+
+    Includes the deployed commit so a push can be confirmed end to end.
+    """
+    commit = (os.getenv("RENDER_GIT_COMMIT") or "local")[:7]
+    return {"ok": True, "service": "PropertyOps", "commit": commit}
 
 
 @app.get("/api/voice-status")
