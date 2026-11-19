@@ -11,6 +11,8 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from .clock import now as clock_now
+
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "propertyops.db"
 
@@ -257,11 +259,11 @@ def connect() -> sqlite3.Connection:
 
 
 def now_iso() -> str:
-    return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    return clock_now().strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def iso_in(minutes: int) -> str:
-    return (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S")
+    return (clock_now() + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def seed(conn: sqlite3.Connection) -> None:

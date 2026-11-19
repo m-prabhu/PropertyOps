@@ -146,7 +146,7 @@ def state() -> dict:
     finally:
         conn.close()
 
-    now = datetime.now()
+    now = clock_now()
     for t in tasks:
         try:
             t["minutes_to_sla"] = int(

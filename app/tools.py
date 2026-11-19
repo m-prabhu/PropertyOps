@@ -64,7 +64,7 @@ def _rows(cur) -> list[dict[str, Any]]:
 
 def _minutes_until(iso_ts: str) -> int:
     try:
-        return int((datetime.fromisoformat(iso_ts) - datetime.now()).total_seconds() // 60)
+        return int((datetime.fromisoformat(iso_ts) - clock_now()).total_seconds() // 60)
     except (TypeError, ValueError):
         return 0
 
@@ -286,7 +286,7 @@ def searchGuest(query: str) -> dict:
 
 
 def getArrivals(room_no: str | None = None, date: str | None = None) -> dict:
-    day = date or datetime.now().date().isoformat()
+    day = date or clock_now().date().isoformat()
     sql = ("SELECT r.res_id, r.room_no, r.arrival_date, r.arrival_eta, r.booked_category, "
            "g.name, g.tier FROM reservations r JOIN guests g ON g.guest_id = r.guest_id "
            "WHERE r.status = 'expected' AND r.arrival_date = ?")
@@ -496,7 +496,7 @@ def createDepartmentTask(department: str, location: str, priority: str,
     if priority not in SLA_MINUTES:
         priority = "medium"
     sla_minutes = SLA_MINUTES[priority]
-    due = (datetime.now() + timedelta(minutes=sla_minutes)).strftime("%Y-%m-%dT%H:%M:%S")
+    due = (clock_now() + timedelta(minutes=sla_minutes)).strftime("%Y-%m-%dT%H:%M:%S")
 
     with db() as conn:
         cur = conn.execute(
@@ -550,7 +550,7 @@ def scheduleFollowup(room_no: str, minutes: int, note: str) -> dict:
         mins = int(minutes)
     except (TypeError, ValueError):
         return fail("ERROR", "I need the reminder as a number of minutes.")
-    due = (datetime.now() + timedelta(minutes=mins)).strftime("%Y-%m-%dT%H:%M:%S")
+    due = (clock_now() + timedelta(minutes=mins)).strftime("%Y-%m-%dT%H:%M:%S")
     with db() as conn:
         cur = conn.execute(
             "INSERT INTO followups (created_at, room_no, due_at, note) VALUES (?,?,?,?)",
