@@ -766,6 +766,7 @@ function renderAlerts(list) {
   const fresh = list.some(a => !seenAlerts.has(a.task_id));
   list.forEach(a => seenAlerts.add(a.task_id));
   if (fresh && connected) chime();
+  if (!els.drawer.hidden) positionDrawer();
 }
 
 function renderFailures(list) {
@@ -895,10 +896,21 @@ function drawerHTML(d) {
   return blocks.join("");
 }
 
+function positionDrawer() {
+  // Start the drawer (and its scrim) below the header, metrics strip and any
+  // alert band, so the microphone control stays visible and usable.
+  const parts = [document.querySelector("header"), document.querySelector(".metrics")];
+  if (els.alerts && !els.alerts.hidden) parts.push(els.alerts);
+  const top = Math.max(0, ...parts.filter(Boolean).map(el => el.getBoundingClientRect().bottom));
+  els.drawer.style.top = top + "px";
+  els.scrim.style.top = top + "px";
+}
+
 async function openRoom(roomNo, keyEl) {
   lastRoomKey = keyEl || null;
   els.drawerTitle.textContent = "Room " + roomNo;
   els.drawerBody.innerHTML = `<div class="quiet">Loading…</div>`;
+  positionDrawer();
   els.drawer.hidden = false;
   els.scrim.hidden = false;
   document.getElementById("drawer-close").focus();
@@ -931,6 +943,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " ") return;
   const key = e.target.closest && e.target.closest(".key");
   if (key) { e.preventDefault(); openRoom(key.dataset.room, key); }
+});
+
+window.addEventListener("resize", () => {
+  if (!els.drawer.hidden) positionDrawer();
 });
 
 /* ---- mic + agent -------------------------------------------------- */
