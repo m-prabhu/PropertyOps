@@ -131,6 +131,11 @@ def main() -> None:
     check("approving a LOWER amount also closes the original request",
           reduced["ok"] and pending_count() == 0, reduced)
 
+    within = tools.applyComp("G-1001", 500, "small goodwill, well inside the ceiling",
+                             approved_by="R. Menon")
+    check("an in-policy comp records NO approver, even if one is passed",
+          within["ok"] and not within["data"].get("approved_by"), within)
+
     task = tools.createDepartmentTask("maintenance", "408", "high", "Inspect AC unit")
     check("task created with SLA", task["ok"] and task["data"]["sla_minutes"] == 30, task)
 

@@ -434,20 +434,28 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
     })
 
     if decision["decision"] in ("ALLOW", "ALLOW_APPROVED"):
-        approver = decision.get("approved_by") or approved_by or None
+        # An in-policy comp has no approver, even if the model passed one.
+        # `approved_by` on the comp must mean "a human overrode the ceiling".
+        # Whoever resolved the pending request is tracked separately.
+        if decision["decision"] == "ALLOW":
+            approver = None
+            resolver = approved_by or "Duty Manager (voice)"
+        else:
+            approver = decision.get("approved_by") or approved_by or None
+            resolver = approver
         with db() as conn:
             cur = conn.execute(
                 "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "
                 "approved_by, request_id) VALUES (?,?,?,?,?,?,?)",
                 (now_iso(), guest_id, amount, reason, decision["rule_code"],
                  approver, request_id))
-            if approver:
+            if resolver:
                 # Close any request for this guest, not just one matching the exact
                 # amount: managers routinely approve a lower figure than requested.
                 conn.execute(
                     "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
                     "WHERE guest_id = ? AND status = 'pending'",
-                    (approver, now_iso(), guest_id))
+                    (resolver, now_iso(), guest_id))
             _audit(conn, "comp_applied", "guest", guest_id,
                    {"amount_inr": amount, "reason": reason, "rule_code": decision["rule_code"],
                     "approved_by": approver})
