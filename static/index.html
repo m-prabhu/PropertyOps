@@ -599,15 +599,26 @@ document.getElementById("join").addEventListener("click", async (e) => {
     }
 
     micClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    let sawRemote = false;
+
+    micClient.on("user-joined", (user) => {
+      label.textContent = "agent joined (" + user.uid + ")";
+    });
+
     micClient.on("user-published", async (user, mediaType) => {
       await micClient.subscribe(user, mediaType);
       if (mediaType === "audio") {
         user.audioTrack.play();
+        sawRemote = true;
         label.textContent = "copilot speaking";
       }
     });
 
-    await micClient.join(cfg.app_id, cfg.channel, cfg.token, cfg.uid);
+    // Agora UIDs must be numeric here: the agent session uses
+    // enable_string_uid=False, so a string UID is a different identity
+    // and the agent would never hear this client.
+    const uidNum = Number(cfg.uid);
+    await micClient.join(cfg.app_id, cfg.channel, cfg.token, uidNum);
     const mic = await AgoraRTC.createMicrophoneAudioTrack();
     await micClient.publish([mic]);
     dot.classList.add("live");
@@ -619,13 +630,16 @@ document.getElementById("join").addEventListener("click", async (e) => {
       body: JSON.stringify({
         channel: cfg.channel,
         agent_uid: Number(cfg.agent_uid),
-        user_uid: Number(cfg.uid),
+        user_uid: uidNum,
       }),
     }).then(r => r.json());
 
     if (started.ok) {
       label.textContent = "listening";
       btn.textContent = "Connected";
+      setTimeout(() => {
+        if (!sawRemote) label.textContent = "agent silent — joined but no audio";
+      }, 12000);
     } else {
       label.textContent = "agent failed: " + (started.error || "unknown");
       btn.disabled = false;
