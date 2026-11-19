@@ -112,12 +112,12 @@ runs. Unset it and the real clock is used.
 
 ## Tools
 
-Twenty, all returning the same envelope — `{ok, status, message, data, hints}` — where
-`message` is written for speech and `data` for the model and console.
+Twenty-one, all returning the same envelope — `{ok, status, message, data, hints}` —
+where `message` is written for speech and `data` for the model and console.
 
 | Group | Tools |
 |---|---|
-| Shift | `getShiftSummary` |
+| Shift | `getShiftSummary`, `getAvailabilitySummary` |
 | Rooms | `getRoom`, `findAvailableRooms`, `setRoomStatus` |
 | Guests | `getGuestContext`, `searchGuest` |
 | Reservations | `getArrivals`, `moveRoom`, `extendStay` |

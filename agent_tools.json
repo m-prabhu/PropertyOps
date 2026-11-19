@@ -12,6 +12,14 @@
     {
       "type": "function",
       "function": {
+        "name": "getAvailabilitySummary",
+        "description": "How many rooms are free right now, broken down by category, plus any room out of service. Use this for questions like 'how many rooms are vacant' or 'how full are we'. Takes no arguments.",
+        "parameters": { "type": "object", "properties": {}, "required": [] }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "getRoom",
         "description": "Read one room's status, housekeeping state, category, nightly rate and current guest. Use for a quick status check when you already know the room number.",
         "parameters": {

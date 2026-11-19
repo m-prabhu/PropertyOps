@@ -198,12 +198,19 @@ def findAvailableRooms(category: str, floor: int | None = None,
                     {"occupancy_pct": round(occupied / total * 100, 1) if total else 0},
                     hints={"next": ["findAvailableRooms", "getArrivals"]})
 
-    if floor is not None and not on_floor:
-        message = (f"Nothing free in {category} on floor {floor}. "
-                   f"{elsewhere[0]['room_no']} is the nearest, on floor {elsewhere[0]['floor']}.")
+    if same:
+        if floor and not on_floor:
+            nearest = elsewhere[0]
+            message = (f"Nothing free in {category} on floor {floor}. "
+                       f"{nearest['room_no']} is the nearest, on floor {nearest['floor']}.")
+        else:
+            first = (on_floor or elsewhere or same)[0]
+            message = f"{first['room_no']} is free in {category}, floor {first['floor']}."
     else:
-        first = (on_floor or elsewhere)[0]
-        message = f"{first['room_no']} is free in {category}, floor {first['floor']}."
+        cheapest = sorted(upgrades, key=lambda r: r["rate_inr"])[0]
+        message = (f"Nothing free in {category}. The cheapest upgrade is "
+                   f"{cheapest['room_no']}, {cheapest['category']} on floor "
+                   f"{cheapest['floor']} at {cheapest['rate_inr']} rupees.")
 
     return ok(message, {
         "requested_category": category,
@@ -576,6 +583,38 @@ def updateTask(task_id: int, status: str, note: str | None = None) -> dict:
                   {"task_id": int(task_id), "status": status})
 
 
+def getAvailabilitySummary() -> dict:
+    """How many rooms are free, by category, plus anything out of service."""
+    with db() as conn:
+        rooms = _rows(conn.execute(
+            "SELECT room_no, floor, category, status FROM rooms ORDER BY room_no"))
+
+    total = len(rooms)
+    vacant = [r for r in rooms if r["status"] == "vacant"]
+    occupied = [r for r in rooms if r["status"] == "occupied"]
+    oos = [r["room_no"] for r in rooms if r["status"] == "out_of_service"]
+
+    by_category: dict[str, list[str]] = {}
+    for room in vacant:
+        by_category.setdefault(room["category"], []).append(room["room_no"])
+
+    parts = [f"{len(vacant)} of {total} rooms are free right now"]
+    if by_category:
+        parts.append(", ".join(f"{len(v)} {k}" for k, v in by_category.items()))
+    if oos:
+        parts.append("out of service: " + ", ".join(oos))
+    message = "; ".join(parts) + "."
+
+    return ok(message, {
+        "total_rooms": total,
+        "vacant": len(vacant),
+        "occupied": len(occupied),
+        "out_of_service": oos,
+        "vacant_by_category": by_category,
+        "vacant_rooms": [r["room_no"] for r in vacant],
+    })
+
+
 def getPolicy(topic: str) -> dict:
     words = {w for w in re.findall(r"[a-z0-9]+", str(topic).lower()) if len(w) > 3}
     with db() as conn:
@@ -844,6 +883,7 @@ def at_risk_tasks(threshold_minutes: int = 15) -> list[dict]:
 
 REGISTRY = {
     "getShiftSummary": getShiftSummary,
+    "getAvailabilitySummary": getAvailabilitySummary,
     "getRoom": getRoom,
     "findAvailableRooms": findAvailableRooms,
     "setRoomStatus": setRoomStatus,

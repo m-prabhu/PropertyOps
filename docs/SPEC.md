@@ -465,7 +465,7 @@ metrics strip. Policy engine and audit are never cut.
 | 3 | Shift identity | **Two-role staff table** (duty manager ₹5,000 / GM ₹25,000) plus a front desk at ₹750, so escalation and refusal are both demonstrable. |
 | 4 | Tool count | **14 tools for P0, confirmed.** P1 tools stay out until P0 is green. |
 | 5 | Text input fallback | **Built.** `POST /api/text` → `agent_think` injects the text as user input; the console unlocks the input box on Connect. |
-| 6 | Tool count | **20.** The 14 specified, plus `declineApproval`, the three W3 tools, and the two W4 tools. Agora caps an agent at 32, so there is room. |
+| 6 | Tool count | **21.** The 14 specified, plus `declineApproval`, the three W3 tools, the two W4 tools, and `getAvailabilitySummary`. Agora caps an agent at 32, so there is room. |
 | 7 | Proactive SLA alert | **Built.** Alerts fire in the console, in the agent's opening line, and — via `agent_speak` — out loud mid-session when a task crosses its threshold. |
 
 ## 12. Verification

@@ -92,6 +92,18 @@ def main() -> None:
                             request_id="mv-1")
     check("move succeeds", moved["ok"] and moved["data"]["to_room"] == "604", moved)
 
+    cleared = tools.findAvailableRooms("deluxe", 0)
+    check("a category with no vacancies returns upgrades, not an error",
+          cleared["ok"] and cleared["data"]["upgrade_options"], cleared)
+
+    summary = tools.getAvailabilitySummary()
+    check("availability summary counts every status",
+          summary["ok"]
+          and summary["data"]["vacant"] == len(summary["data"]["vacant_rooms"])
+          and summary["data"]["occupied"] + summary["data"]["vacant"]
+          + len(summary["data"]["out_of_service"]) == summary["data"]["total_rooms"],
+          summary)
+
     again = tools.moveRoom("G-1001", "408", "604", "retry", request_id="mv-1")
     check("move is idempotent on request_id", again["ok"], again)
 
