@@ -22,6 +22,6 @@ services:
       - key: LLM_MODEL
         value: gpt-4o-mini
       - key: MURF_VOICE_ID
-        value: Matthew
+        value: Abhinav
       - key: MURF_LOCALE
-        value: en-US
+        value: en-IN
