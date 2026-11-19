@@ -48,7 +48,7 @@ Agora Conversational AI Engine  ──  ASR (Deepgram) ── LLM (tool calling)
       ▼                                    ▼
 FastAPI  ── 20 tools ── policy engine ── audit writer ── SQLite
       │
-      └──  /api/state, /api/room/{no}, /api/observability   →  console
+      └──  /api/state, /api/room/{no}, /api/observability, /api/text, /api/speak  →  console
 ```
 
 The agent runs in Agora's cloud, so tool endpoints must be publicly reachable over HTTPS.
@@ -151,6 +151,21 @@ else is a quiet rail.
 
 ---
 
+## Text input and server-initiated speech
+
+Two Agora REST capabilities that most voice demos skip, both wired up here:
+
+- **Typed input.** If the mic or ASR fails, type instead. `POST /api/text` forwards to
+  `agent_think`, which injects the text as user input — the agent answers exactly as if
+  you had spoken it. The input box unlocks on Connect.
+- **Server-initiated speech.** `POST /api/speak` broadcasts through TTS with
+  `INTERRUPT | APPEND | IGNORE` priority. The SLA alert loop uses it: when a task crosses
+  its threshold while a conversation is live, the agent says so without being asked.
+
+Both require a cascading LLM and are unsupported under `mllm` configuration.
+
+---
+
 ## Running locally
 
 Python 3.11+ (developed on 3.13).
@@ -199,7 +214,7 @@ to a known demo state. `POST /api/reset` does the same on demand.
 .venv/Scripts/python -m scripts.spec_tests
 ```
 
-**51 checks**, covering every policy branch (including the same amount at 15:00 and 23:40),
+**55 checks**, covering every policy branch (including the same amount at 15:00 and 23:40),
 the authority ladder, escalation, all five workflows, error semantics, idempotency on money
 writes, approval closure on decline or partial approval, and the SLA alert firing once
 rather than on every poll.
@@ -227,22 +242,7 @@ scripts/spec_tests.py
 
 ---
 
-## Text input and server-initiated speech
-
-Two Agora REST capabilities that most voice demos skip, both wired up here:
-
-- **Typed input.** If the mic or ASR fails, type instead. `POST /api/text` forwards to
-  `agent_think`, which injects the text as user input — the agent answers exactly as if
-  you had spoken it. The input box unlocks on Connect.
-- **Server-initiated speech.** `POST /api/speak` broadcasts through TTS with
-  `INTERRUPT | APPEND | IGNORE` priority. The SLA alert loop uses it: when a task crosses
-  its threshold while a conversation is live, the agent says so without being asked.
-
-Both require a cascading LLM and are unsupported under `mllm` configuration.
-
 ## Deliberately not built
-
-Named here rather than faked:
 
 - **Real PMS integration.** The property is a seeded SQLite world behind the same tool
   contracts a real PMS adapter would implement.
