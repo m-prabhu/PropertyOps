@@ -15,6 +15,9 @@ _lab/
 # hackathon brief, not part of the product
 tracks.txt
 
+# rehearsal notes, kept local only
+docs/DEMO.md
+
 # os
 .DS_Store
 Thumbs.db
