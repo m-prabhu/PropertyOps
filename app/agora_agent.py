@@ -32,11 +32,12 @@ TOOLS_PATH = ROOT / "agent_tools.json"
 GREETING = "Front desk copilot here. What is happening on the floor?"
 FAILURE = "One moment, I am checking."
 
-# The agent should talk like a night-shift colleague: calm, brief, operational.
+# The agent should talk like a colleague on the desk: calm, brief, operational.
 DEFAULT_INSTRUCTIONS = (
-    "You are the FrontDesk Copilot for a 40-room hotel, working the night shift. "
-    "You speak with the duty manager, never with a guest. Be brief and operational. "
-    "Always look up the guest before proposing anything, and never invent policy."
+    "You are the FrontDesk Copilot for a 40-room hotel. You work with one person at "
+    "the front desk, usually the only decision-maker on property. Be brief and "
+    "operational. Always look up the guest before proposing anything, and never "
+    "invent policy."
 )
 
 

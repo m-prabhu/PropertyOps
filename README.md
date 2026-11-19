@@ -14,8 +14,8 @@ the Call Center*.
 
 ## What it does
 
-It's 11pm, the property is 92% occupied, and one person is on the desk. A guest says the
-AC is rattling. The manager says:
+One person is on the front desk. The property is 92% occupied. A guest says the AC is
+rattling. The manager says:
 
 > "Room 408 has a broken air conditioner and Mr Rao has been waiting an hour."
 
@@ -33,6 +33,10 @@ Three things make it more than a chatbot with function calls:
    reversed charge stays on the bill, marked reversed, with a reason.
 3. **Failures return a next step.** Unavailable, conflicting, refused — each response
    carries the alternative, so the agent recovers in one turn instead of apologising.
+
+The setting is a shift, not an hour. The same five workflows run at 3pm and 3am; the
+time-of-day policy exists to show the engine reads context, not to imply the product
+starts at sunset.
 
 ---
 

@@ -434,7 +434,7 @@ def seed(conn: sqlite3.Connection) -> None:
         "INSERT INTO audit (created_at, actor, action, entity, entity_id, detail_json) "
         "VALUES (?,?,?,?,?,?)",
         (now_iso(), "system", "shift_start", "property", "1",
-         json.dumps({"detail": "Night shift started. Duty manager on floor."})),
+         json.dumps({"detail": "Shift started. Duty manager on the desk."})),
     )
 
 
