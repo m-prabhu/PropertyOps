@@ -310,6 +310,26 @@ def main() -> None:
         check("think refuses without a live session", True)
     ag.service.current_agent_id = saved_agent
 
+    # --- seed coherence -----------------------------------------------
+    section("seed coherence")
+
+    db.init(reset=True)
+    conn = db.connect()
+    try:
+        orphans = conn.execute(
+            "SELECT COUNT(*) n FROM rooms r WHERE r.status = 'occupied' AND NOT EXISTS ("
+            "SELECT 1 FROM reservations v WHERE v.room_no = r.room_no AND v.status = 'in_house')"
+        ).fetchone()["n"]
+        occupied = conn.execute(
+            "SELECT COUNT(*) n FROM rooms WHERE status = 'occupied'").fetchone()["n"]
+        in_house = conn.execute(
+            "SELECT COUNT(*) n FROM reservations WHERE status = 'in_house'").fetchone()["n"]
+    finally:
+        conn.close()
+    check("every occupied room has an in-house guest", orphans == 0, orphans)
+    check("in-house reservations match occupied rooms", in_house == occupied,
+          f"occupied={occupied} in_house={in_house}")
+
     # --- envelopes ---------------------------------------------------
     section("envelope contract")
 

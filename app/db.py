@@ -396,6 +396,37 @@ def seed(conn: sqlite3.Connection) -> None:
         "rooms_available, phone) VALUES (?,?,?,?,?,?,?,?)", PARTNERS,
     )
 
+    # Every occupied room must have a guest. Without this the board says 92%
+    # occupied while the drawer says "no guest in house" for most rooms.
+    FIRSTS = ["Aditi", "Rohan", "Sneha", "Vikram", "Kavya", "Arjun", "Nisha", "Rahul"]
+    LASTS = ["Menon", "Sharma", "Iyer", "Reddy", "Nair", "Gupta"]
+    TIERS = ["silver", "silver", "gold", "silver", "platinum", "silver", "gold"]
+
+    occupied = conn.execute(
+        "SELECT room_no, category, rate_inr FROM rooms WHERE status = 'occupied' "
+        "ORDER BY room_no").fetchall()
+    taken = {r["room_no"] for r in conn.execute(
+        "SELECT room_no FROM reservations WHERE status = 'in_house' AND room_no IS NOT NULL")}
+
+    filler = [r for r in occupied if r["room_no"] not in taken]
+    for i, room in enumerate(filler):
+        guest_id = f"G-{3000 + i}"
+        first = FIRSTS[i % len(FIRSTS)]
+        last = LASTS[(i // len(FIRSTS)) % len(LASTS)]
+        tier = TIERS[i % len(TIERS)]
+        conn.execute(
+            "INSERT INTO guests (guest_id, name, tier, phone, email, preferences) "
+            "VALUES (?,?,?,?,?,?)",
+            (guest_id, f"{first} {last}", tier, f"+91 9{800000000 + i * 137:09d}",
+             f"{first.lower()}.{last.lower()}@example.com", None))
+        conn.execute(
+            "INSERT INTO reservations (res_id, guest_id, room_no, arrival_date, departure_date, "
+            "arrival_eta, booked_category, rate_inr, status) "
+            "VALUES (?,?,?,?,?,?,?,?, 'in_house')",
+            (f"R-{8000 + i}", guest_id, room["room_no"], yesterday,
+             today.isoformat() if i % 3 == 0 else tomorrow,
+             None, room["category"], room["rate_inr"]))
+
     conn.execute(
         "INSERT INTO folio_charges (res_id, category, description, amount_inr, posted_at) "
         "VALUES ('R-9001','room','Room charge 408',6500,?)", (now_iso(),)
