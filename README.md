@@ -224,6 +224,19 @@ scripts/spec_tests.py
 
 ---
 
+## Supported by the platform, not yet built
+
+- **Typed input.** `POST /v2/projects/{appid}/agents/{agentId}/think` injects text into
+  the conversation as user input, so a text fallback needs no RTM client at all. Not
+  wired up here; the recorded demo is the fallback instead.
+- **Server-initiated speech mid-session.** `POST /v2/projects/{appid}/agents/{agentId}/speak`
+  broadcasts text through TTS with `priority: INTERRUPT | APPEND | IGNORE`. This is the
+  proper home for SLA alerts while a conversation is live. Today the agent leads with
+  them when a session opens, and the console raises them in parallel.
+
+Both endpoints are unsupported under `mllm` configuration; this agent uses a cascading
+LLM, so both apply.
+
 ## Deliberately not built
 
 Named here rather than faked:
@@ -233,11 +246,8 @@ Named here rather than faked:
 - **Payments.** Reversals correct the bill; no money moves.
 - **Authentication.** Single desk, single role per request; no RBAC.
 - **Multi-property, channel manager, forecasting, i18n.**
-- **Text input fallback.** Typed input to the agent needs the Agora client toolkit plus an
-  RTM client; there is no REST equivalent. The recorded demo is the fallback instead.
-- **Server-initiated speech mid-session.** Agora has no server call that makes a running
-  agent talk unprompted, so the agent leads with SLA alerts when a session opens and the
-  console raises them live.
+- **Guest messaging.** A `notifyGuest` tool with a stubbed channel would be a stub, and
+  calling a stub "guest communication" invites a question worth avoiding.
 
 ---
 
