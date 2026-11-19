@@ -241,6 +241,9 @@ def alerts() -> dict:
 
 @app.get("/api/state")
 def state() -> dict:
+    # Raise alerts before reading the audit log, so the banner and its ledger
+    # entry appear in the same response.
+    alerts = _raise_alerts()
     conn = dbmod.connect()
     try:
         rooms = [dict(r) for r in conn.execute(
@@ -297,7 +300,7 @@ def state() -> dict:
         "approvals": approvals,
         "metrics": metrics,
         "tools": _tool_health(),
-        "alerts": _raise_alerts(),
+        "alerts": alerts,
         "stats": {
             "occupancy_pct": round(occupied / total * 100, 1) if total else 0,
             "out_of_service": oos,
