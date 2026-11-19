@@ -442,10 +442,12 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
                 (now_iso(), guest_id, amount, reason, decision["rule_code"],
                  approver, request_id))
             if approver:
+                # Close any request for this guest, not just one matching the exact
+                # amount: managers routinely approve a lower figure than requested.
                 conn.execute(
                     "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
-                    "WHERE guest_id = ? AND amount_inr = ? AND status = 'pending'",
-                    (approver, now_iso(), guest_id, amount))
+                    "WHERE guest_id = ? AND status = 'pending'",
+                    (approver, now_iso(), guest_id))
             _audit(conn, "comp_applied", "guest", guest_id,
                    {"amount_inr": amount, "reason": reason, "rule_code": decision["rule_code"],
                     "approved_by": approver})
@@ -487,6 +489,33 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
                  "required_role": decision["required_role"],
                  "rule_code": decision["rule_code"], "guest_name": guest["name"]},
                 hints={"next": ["applyComp"], "needs": "approved_by"})
+
+
+def declineApproval(guest_id: str, reason: str, declined_by: str = "") -> dict:
+    """Close a pending compensation request without spending anything."""
+    with db() as conn:
+        guest = conn.execute("SELECT name FROM guests WHERE guest_id = ?", (guest_id,)).fetchone()
+        if guest is None:
+            return fail("NOT_FOUND", f"I do not have a guest {guest_id}.")
+
+        pending = _rows(conn.execute(
+            "SELECT id, amount_inr FROM approvals WHERE guest_id = ? AND status = 'pending'",
+            (guest_id,)))
+        if not pending:
+            return ok(f"Nothing is waiting for approval for {guest['name']}.",
+                      {"closed": 0})
+
+        total = sum(p["amount_inr"] for p in pending)
+        conn.execute(
+            "UPDATE approvals SET status = 'declined', decided_by = ?, decided_at = ? "
+            "WHERE guest_id = ? AND status = 'pending'",
+            (declined_by or "Duty Manager (voice)", now_iso(), guest_id))
+        _audit(conn, "comp_declined", "guest", guest_id,
+               {"amount_inr": total, "reason": reason,
+                "decided_by": declined_by or "Duty Manager (voice)"})
+
+        return ok(f"Declined. Nothing recorded against {guest['name']}.",
+                  {"closed": len(pending), "declined_total_inr": total})
 
 
 def createDepartmentTask(department: str, location: str, priority: str,
@@ -572,6 +601,7 @@ REGISTRY = {
     "moveRoom": moveRoom,
     "extendStay": extendStay,
     "applyComp": applyComp,
+    "declineApproval": declineApproval,
     "createDepartmentTask": createDepartmentTask,
     "updateTask": updateTask,
     "getPolicy": getPolicy,

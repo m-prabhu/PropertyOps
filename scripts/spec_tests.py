@@ -107,6 +107,30 @@ def main() -> None:
     dup = tools.applyComp("G-1001", 3000, "retry", approved_by="R. Menon", request_id="comp-1")
     check("comp is idempotent on request_id", dup["ok"], dup)
 
+    # --- approval closure ---------------------------------------------
+    section("approval closure")
+
+    def pending_count() -> int:
+        c = db.connect()
+        try:
+            return c.execute(
+                "SELECT COUNT(*) c FROM approvals WHERE status = 'pending'").fetchone()["c"]
+        finally:
+            c.close()
+
+    tools.applyComp("G-1001", 4000, "request the manager will decline")
+    check("a blocked comp creates a pending request", pending_count() >= 1, pending_count())
+
+    declined = tools.declineApproval("G-1001", "manager refused the amount", "")
+    check("decline closes the pending request",
+          declined["ok"] and pending_count() == 0, declined)
+
+    tools.applyComp("G-1001", 4000, "request the manager will reduce")
+    reduced = tools.applyComp("G-1001", 2500, "manager authorised 2500 only",
+                              approved_by="R. Menon")
+    check("approving a LOWER amount also closes the original request",
+          reduced["ok"] and pending_count() == 0, reduced)
+
     task = tools.createDepartmentTask("maintenance", "408", "high", "Inspect AC unit")
     check("task created with SLA", task["ok"] and task["data"]["sla_minutes"] == 30, task)
 

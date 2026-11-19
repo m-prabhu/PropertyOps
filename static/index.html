@@ -582,10 +582,52 @@ document.addEventListener("click", async (e) => {
 });
 
 /* ---- mic + agent -------------------------------------------------- */
+let agentId = null;
+let micTrack = null;
+let connected = false;
+
+async function disconnectVoice(note) {
+  const btn = document.getElementById("join");
+  const label = document.getElementById("mic-label");
+  const dot = document.getElementById("mic-dot");
+
+  btn.disabled = true;
+  btn.textContent = "Disconnecting…";
+
+  try {
+    if (agentId) {
+      await fetch("/api/agent/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: agentId }),
+      }).catch(() => {});
+    }
+  } catch (e) { /* best effort */ }
+
+  try { if (micTrack) { micTrack.stop(); micTrack.close(); } } catch (e) {}
+  try { if (micClient) { await micClient.leave(); } } catch (e) {}
+
+  agentId = null;
+  micTrack = null;
+  micClient = null;
+  connected = false;
+
+  dot.classList.remove("live");
+  label.textContent = note || "microphone off";
+  btn.textContent = "Connect";
+  btn.disabled = false;
+}
+
 document.getElementById("join").addEventListener("click", async (e) => {
   const btn = e.currentTarget;
   const label = document.getElementById("mic-label");
   const dot = document.getElementById("mic-dot");
+
+  if (connected) {
+    await disconnectVoice("disconnected");
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = "Connecting…";
 
@@ -619,8 +661,8 @@ document.getElementById("join").addEventListener("click", async (e) => {
     // and the agent would never hear this client.
     const uidNum = Number(cfg.uid);
     await micClient.join(cfg.app_id, cfg.channel, cfg.token, uidNum);
-    const mic = await AgoraRTC.createMicrophoneAudioTrack();
-    await micClient.publish([mic]);
+    micTrack = await AgoraRTC.createMicrophoneAudioTrack();
+    await micClient.publish([micTrack]);
     dot.classList.add("live");
     label.textContent = "mic on, starting copilot…";
 
@@ -635,20 +677,31 @@ document.getElementById("join").addEventListener("click", async (e) => {
     }).then(r => r.json());
 
     if (started.ok) {
+      agentId = started.agent_id;
+      connected = true;
       label.textContent = "listening";
-      btn.textContent = "Connected";
+      btn.textContent = "Disconnect";
+      btn.disabled = false;
       setTimeout(() => {
-        if (!sawRemote) label.textContent = "agent silent — joined but no audio";
+        if (connected && !sawRemote) label.textContent = "agent silent — joined but no audio";
       }, 12000);
     } else {
       label.textContent = "agent failed: " + (started.error || "unknown");
       btn.disabled = false;
       btn.textContent = "Retry";
+      await disconnectVoice("agent failed");
     }
   } catch (err) {
-    label.textContent = "connection failed";
-    btn.disabled = false;
-    btn.textContent = "Retry";
+    await disconnectVoice("connection failed");
+  }
+});
+
+// Releasing the mic on tab close also stops the agent, so a stale session
+// never sits in the channel holding a billing slot.
+window.addEventListener("beforeunload", () => {
+  if (agentId) {
+    navigator.sendBeacon("/api/agent/stop",
+      new Blob([JSON.stringify({ agent_id: agentId })], { type: "application/json" }));
   }
 });
 

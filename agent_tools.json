@@ -150,6 +150,22 @@
     {
       "type": "function",
       "function": {
+        "name": "declineApproval",
+        "description": "Decline the compensation currently waiting for approval for a guest, so nothing is recorded against them and the request disappears. Use this whenever the manager says no, or refuses to approve the amount.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "guest_id": { "type": "string" },
+            "reason": { "type": "string", "description": "Why it was declined, in the manager's words." },
+            "declined_by": { "type": "string", "description": "Name of the manager declining, or an empty string." }
+          },
+          "required": ["guest_id", "reason", "declined_by"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "createDepartmentTask",
         "description": "Raise a work order for housekeeping, maintenance, front desk, or security, with an SLA clock based on priority.",
         "parameters": {
