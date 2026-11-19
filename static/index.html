@@ -451,6 +451,10 @@
     <span class="metric-label">SLA compliance</span>
     <span class="metric-value" id="m-sla">—</span>
   </div>
+  <div class="metric">
+    <span class="metric-label">tool p95 / problems</span>
+    <span class="metric-value" id="m-tools">—</span>
+  </div>
 </div>
 
 <main id="main">
@@ -482,6 +486,11 @@
     <section aria-labelledby="ledger-title">
       <h2 id="ledger-title">Shift ledger</h2>
       <div class="ledger" id="ledger" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="fails-title" id="fails-section" hidden>
+      <h2 id="fails-title">Tool failures</h2>
+      <div class="ledger" id="fails" aria-live="polite"></div>
     </section>
   </aside>
 </main>
@@ -515,6 +524,9 @@ const els = {
   mClose: document.getElementById("m-close"),
   mComps: document.getElementById("m-comps"),
   mSla: document.getElementById("m-sla"),
+  mTools: document.getElementById("m-tools"),
+  fails: document.getElementById("fails"),
+  failsSection: document.getElementById("fails-section"),
   drawer: document.getElementById("drawer"),
   drawerBody: document.getElementById("drawer-body"),
   drawerTitle: document.getElementById("drawer-title"),
@@ -532,7 +544,7 @@ const inrFmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "IN
 
 // Re-render only when the markup actually changes, so aria-live regions don't
 // re-announce the same content every poll.
-const rendered = { tasks: "", ledger: "", approvals: "" };
+const rendered = { tasks: "", ledger: "", approvals: "", fails: "" };
 function setHTML(key, el, html) {
   if (rendered[key] === html) return;
   rendered[key] = html;
@@ -661,6 +673,20 @@ function renderApprovals(list) {
     </div>`).join(""));
 }
 
+function renderFailures(list) {
+  if (!list || !list.length) {
+    els.failsSection.hidden = true;
+    if (rendered.fails) { rendered.fails = ""; els.fails.innerHTML = ""; }
+    return;
+  }
+  els.failsSection.hidden = false;
+  setHTML("fails", els.fails, list.map(f => `
+    <div class="entry blocked">
+      <time>${f.ts}</time>
+      <div><b>${f.tool}</b> <span class="actor">${f.status}</span> <span class="who">${f.message}</span></div>
+    </div>`).join(""));
+}
+
 async function refresh() {
   let s;
   try {
@@ -679,6 +705,10 @@ async function refresh() {
   els.mClose.textContent = m.median_close_min == null ? "no closures yet" : m.median_close_min + " min";
   els.mComps.textContent = `${m.comps_applied ?? 0} / ${m.comps_blocked ?? 0}`;
   els.mSla.textContent = `${m.sla_compliance_pct ?? 100}%`;
+  els.mTools.textContent = s.tools && s.tools.p95_ms != null
+    ? `${s.tools.p95_ms} ms / ${s.tools.problems ?? 0}`
+    : "no calls yet";
+  renderFailures(s.tools ? s.tools.failures : []);
 
   renderRack(s.rooms);
   renderTasks(s.tasks.filter(t => t.status === "open" || t.status === "in_progress"));
@@ -936,7 +966,7 @@ document.getElementById("reset").addEventListener("click", async () => {
   built = false;
   cells.clear();
   lastStatus = {};
-  rendered.tasks = rendered.ledger = rendered.approvals = "";
+  rendered.tasks = rendered.ledger = rendered.approvals = rendered.fails = "";
   els.floors.innerHTML = "";
   refresh();
 });

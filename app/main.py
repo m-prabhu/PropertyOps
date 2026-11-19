@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
+import time
+from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
 
@@ -26,6 +29,64 @@ except Exception:  # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
+
+logger = logging.getLogger("uvicorn.error")
+
+# Every tool call observed this process, newest last. Bounded so a long-running
+# demo can't grow it without limit.
+TOOL_LOG: deque = deque(maxlen=500)
+
+
+def _record_tool(name: str, result: dict, duration_ms: int, args: dict) -> None:
+    entry = {
+        "ts": clock_now().strftime("%H:%M:%S"),
+        "tool": name,
+        "status": result.get("status", "ERROR"),
+        "ok": bool(result.get("ok")),
+        "ms": duration_ms,
+        "args": {k: str(v)[:60] for k, v in args.items()},
+        "message": str(result.get("message", ""))[:200],
+    }
+    TOOL_LOG.append(entry)
+    # The literal "logged to console" half of the requirement.
+    logger.info("tool=%s status=%s ms=%d ok=%s", name, entry["status"], duration_ms, entry["ok"])
+
+
+def _tool_health() -> dict:
+    rows = list(TOOL_LOG)
+    per_tool: dict[str, dict] = {}
+    for r in rows:
+        b = per_tool.setdefault(r["tool"], {"count": 0, "ms": [], "statuses": Counter()})
+        b["count"] += 1
+        b["ms"].append(r["ms"])
+        b["statuses"][r["status"]] += 1
+
+    for b in per_tool.values():
+        values = sorted(b["ms"])
+        n = len(values)
+        b["p50_ms"] = values[n // 2]
+        b["p95_ms"] = values[min(n - 1, int(round(0.95 * (n - 1))))]
+        b["statuses"] = dict(b["statuses"])
+        del b["ms"]
+
+    durations = sorted(r["ms"] for r in rows)
+    # Approvals, conflicts and unavailability are expected business outcomes, not
+    # failures. Only a broken call or a lookup that found nothing counts.
+    problem_statuses = {"ERROR", "NOT_FOUND"}
+    problems = [r for r in rows if r["status"] in problem_statuses]
+    overall_p95 = (durations[min(len(durations) - 1, int(round(0.95 * (len(durations) - 1))))]
+                   if durations else None)
+
+    return {
+        "calls": len(rows),
+        "p95_ms": overall_p95,
+        "errors": sum(1 for r in rows if r["status"] == "ERROR"),
+        "problems": len(problems),
+        "non_done": sum(1 for r in rows if not r["ok"]),
+        "by_tool": per_tool,
+        "failures": problems[-8:],
+    }
+
 
 app = FastAPI(title="PropertyOps")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -203,6 +264,7 @@ def state() -> dict:
         "staff": staff,
         "approvals": approvals,
         "metrics": metrics,
+        "tools": _tool_health(),
         "stats": {
             "occupancy_pct": round(occupied / total * 100, 1) if total else 0,
             "out_of_service": oos,
@@ -261,19 +323,34 @@ class ToolCall(BaseModel):
 def call_tool(name: str, payload: ToolCall) -> dict:
     fn = REGISTRY.get(name)
     if fn is None:
+        _record_tool(name, {"ok": False, "status": "NOT_FOUND",
+                            "message": f"Unknown tool '{name}'"}, 0, payload.model_dump())
         raise HTTPException(404, f"Unknown tool '{name}'")
+
+    args = payload.model_dump()
+    started = time.perf_counter()
     try:
-        return fn(**payload.model_dump())
+        result = fn(**args)
     except TypeError as exc:
-        return {"ok": False, "status": "ERROR",
-                "message": f"Bad arguments for {name}: {exc}", "data": {}, "hints": {}}
+        result = {"ok": False, "status": "ERROR",
+                  "message": f"Bad arguments for {name}: {exc}", "data": {}, "hints": {}}
     except Exception as exc:  # the agent should hear the failure, not a stack trace
-        return {"ok": False, "status": "ERROR", "message": str(exc), "data": {}, "hints": {}}
+        result = {"ok": False, "status": "ERROR", "message": str(exc),
+                  "data": {}, "hints": {}}
+
+    _record_tool(name, result, round((time.perf_counter() - started) * 1000), args)
+    return result
+
+
+@app.get("/api/observability")
+def observability() -> dict:
+    return _tool_health()
 
 
 @app.post("/api/reset")
 def reset() -> dict:
     dbmod.init(reset=True)
+    TOOL_LOG.clear()
     return {"status": "reset", "rooms": 40}
 
 
