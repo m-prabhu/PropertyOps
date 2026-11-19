@@ -630,7 +630,7 @@ def findPartnerHotel(category: str, max_distance_km: float = 0) -> dict:
             limit = 0
         if limit:
             options = [r for r in options if r["distance_km"] <= limit]
-    options.sort(key=lambda r: r["distance_km"])
+    options.sort(key=lambda r: (CATEGORY_RANK[r["category"]] - wanted, r["distance_km"]))
 
     if not options:
         return fail("UNAVAILABLE",
@@ -639,9 +639,11 @@ def findPartnerHotel(category: str, max_distance_km: float = 0) -> dict:
                     hints={"next": ["findPartnerHotel"]})
 
     first = options[0]
+    upgrade = CATEGORY_RANK[first["category"]] > wanted
     return ok(
         f"{first['name']} in {first['area']} is {first['distance_km']} km away, "
-        f"{first['category']}, at {first['rate_inr']} rupees.",
+        f"{first['category']}, at {first['rate_inr']} rupees."
+        + (" That is an upgrade on what they booked." if upgrade else ""),
         {"options": options[:3]},
     )
 
