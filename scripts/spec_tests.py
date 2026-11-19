@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app import db, policy, tools
 
@@ -153,23 +153,23 @@ def main() -> None:
     # --- W2 ----------------------------------------------------------
     section("W2 late checkout vs arrival (capped at ETA)")
 
-    arrivals = tools.getArrivals("508")
-    check("508 has a same-day arrival at 14:00",
+    tomorrow = (datetime.now() + timedelta(days=1)).date().isoformat()
+    arrivals = tools.getArrivals("508", tomorrow)
+    check("508 has a next-day arrival at 14:00",
           arrivals["ok"] and arrivals["data"]["arrivals"][0]["arrival_eta"] == "14:00", arrivals)
 
     late = tools.extendStay("G-1002", "2026-12-24")
     check("extension on a date with no arrival -> DONE",
           late["ok"] and late["data"]["new_departure"].startswith("2026-12-24"), late)
-    tools.extendStay("G-1002", "2026-11-20", rate_inr=6500)  # reset departure for the clash case
+    tools.extendStay("G-1002", tomorrow, rate_inr=6500)  # reset departure for the clash case
 
-    today = datetime.now().date().isoformat()
-    clash = tools.extendStay("G-1002", f"{today}T16:00")
-    check("extension past same-day ETA -> CONFLICT with latest_possible_checkout",
+    clash = tools.extendStay("G-1002", f"{tomorrow}T16:00")
+    check("extension past the arrival ETA -> CONFLICT with latest_possible_checkout",
           clash["status"] == "CONFLICT"
           and clash["data"]["latest_possible_checkout"].endswith("T14:00"), clash)
 
-    capped = tools.extendStay("G-1002", f"{today}T13:30")
-    check("extension before ETA -> DONE", capped["ok"], capped)
+    capped = tools.extendStay("G-1002", f"{tomorrow}T13:30")
+    check("extension before the ETA -> DONE", capped["ok"], capped)
 
     # --- W5 ----------------------------------------------------------
     section("W5 shift handover")

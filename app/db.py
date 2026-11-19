@@ -325,7 +325,7 @@ def seed(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT INTO reservations (res_id, guest_id, room_no, arrival_date, departure_date, "
         "arrival_eta, booked_category, rate_inr, status) VALUES (?,?,?,?,?,?,?,?, 'expected')",
-        ("R-9101", "G-2001", "508", today.isoformat(), in_two, "14:00", "deluxe", 6500),
+        ("R-9101", "G-2001", "508", tomorrow, in_two, "14:00", "deluxe", 6500),
     )
     conn.execute(
         "INSERT INTO reservations (res_id, guest_id, room_no, arrival_date, departure_date, "
