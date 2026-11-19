@@ -12,6 +12,9 @@ _lab/
 .opencode/
 .pytest_cache/
 
+# hackathon brief, not part of the product
+tracks.txt
+
 # os
 .DS_Store
 Thumbs.db
