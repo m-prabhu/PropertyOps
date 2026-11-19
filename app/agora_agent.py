@@ -265,11 +265,29 @@ class AgentService:
             raise RuntimeError("No live agent session — connect the microphone first.")
         return self.current_agent_id
 
+    def _auth_options(self) -> dict | None:
+        """In app-credentials mode the SDK sends an empty Authorization header.
+
+        `stop_agent` mints a ConvoAI token itself, but speak/think do not, so we
+        build one here. With customer_id/customer_secret or auth_token configured,
+        the client already authenticates every request and we pass nothing.
+        """
+        if self.client is None or getattr(self.client, "auth_mode", "") != "app-credentials":
+            return None
+        token = generate_convo_ai_token(
+            app_id=self.app_id,
+            app_certificate=self.app_certificate,
+            channel_name="agent-control",
+            uid=0,
+        )
+        return {"additional_headers": {"Authorization": f"agora token={token}"}}
+
     async def speak(self, text: str, priority: str = "APPEND") -> dict:
         """Make the running agent say something it was not asked to say."""
         agent_id = self._require_session()
         await self.client.agents.speak(
-            self.app_id, agent_id, text=text, priority=priority, interruptable=True)
+            self.app_id, agent_id, text=text, priority=priority, interruptable=True,
+            request_options=self._auth_options())
         logger.info("agent speak id=%s priority=%s", agent_id, priority)
         return {"agent_id": agent_id, "text": text, "priority": priority}
 
@@ -282,6 +300,7 @@ class AgentService:
             on_thinking_action="append",
             on_speaking_action="append",
             interruptable=True,
+            request_options=self._auth_options(),
         )
         logger.info("agent think id=%s chars=%d", agent_id, len(text))
         return {"agent_id": agent_id, "text": text}
