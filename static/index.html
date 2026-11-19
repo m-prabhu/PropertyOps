@@ -28,6 +28,10 @@
 
   * { box-sizing: border-box; }
 
+  /* The UA [hidden] rule loses to any author rule that sets display, so the
+     drawer and alert band were rendering while "hidden". */
+  [hidden] { display: none !important; }
+
   html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 
   .sr-only {
