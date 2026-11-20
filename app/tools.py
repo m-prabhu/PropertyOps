@@ -149,8 +149,13 @@ def getRoom(room_no: str) -> dict:
         room = conn.execute("SELECT * FROM rooms WHERE room_no = ?",
                             (str(room_no).strip(),)).fetchone()
         if room is None:
-            return fail("NOT_FOUND", f"No room called {room_no} in this property.",
-                        hints={"next": ["findAvailableRooms"]})
+            return fail(
+                "NOT_FOUND",
+                f"No room called {room_no}. Rooms run {_room_number_ranges(conn)}.",
+                {"asked_for": str(room_no).strip()},
+                hints={"next": ["searchGuest", "getAvailabilitySummary"],
+                       "note": "Do not retry the same number. Read it back, or search "
+                               "by the guest's name instead."})
         guest = _guest_or_none(conn, room["room_no"])
         tasks = _rows(conn.execute(
             "SELECT task_id, department, priority, description, status, sla_due, assignee "
@@ -268,18 +273,34 @@ def setRoomStatus(room_no: str, status: str, reason: str) -> dict:
                   {"room_no": room["room_no"], "from": room["status"], "to": status})
 
 
+def _room_number_ranges(conn) -> str:
+    """A compact statement of which room numbers exist, for NOT_FOUND replies."""
+    floors: dict[str, list[int]] = {}
+    for row in conn.execute("SELECT room_no FROM rooms"):
+        room_no = row["room_no"]
+        floors.setdefault(room_no[0], []).append(int(room_no[1:]))
+    return ", ".join(
+        f"{floor}01 to {floor}{max(numbers):02d}"
+        for floor, numbers in sorted(floors.items()))
+
+
 def getGuestContext(room_no: str) -> dict:
     with db() as conn:
         room = conn.execute("SELECT * FROM rooms WHERE room_no = ?",
                             (str(room_no).strip(),)).fetchone()
         if room is None:
-            return fail("NOT_FOUND", f"No room called {room_no}.")
+            return fail(
+                "NOT_FOUND",
+                f"No room called {room_no}. Rooms run {_room_number_ranges(conn)}.",
+                {"asked_for": str(room_no).strip()},
+                hints={"next": ["searchGuest", "getAvailabilitySummary"],
+                       "note": "Do not retry the same number. Read it back, or search "
+                               "by the guest's name instead."})
 
         res = _guest_or_none(conn, room["room_no"])
         if res is None:
             return ok(f"{room['room_no']} has no guest in house.",
                       {"room": dict(room), "guest": None})
-
         comps = conn.execute(
             "SELECT COALESCE(SUM(amount_inr),0) s FROM comps WHERE guest_id = ?",
             (res["guest_id"],)).fetchone()["s"]
@@ -571,6 +592,18 @@ def createDepartmentTask(department: str, location: str, priority: str,
     due = (clock_now() + timedelta(minutes=sla_minutes)).strftime("%Y-%m-%dT%H:%M:%S")
 
     with db() as conn:
+        existing = conn.execute(
+            "SELECT task_id, sla_due FROM tasks WHERE department = ? AND location = ? "
+            "AND lower(description) = lower(?) AND status IN ('open','in_progress') "
+            "ORDER BY task_id LIMIT 1",
+            (department, location, description)).fetchone()
+        if existing is not None:
+            return ok(
+                f"There is already an open {department} task for {location}: "
+                f"{description}. I did not raise a duplicate.",
+                {"task_id": existing["task_id"], "duplicate": True,
+                 "sla_due": existing["sla_due"]})
+
         cur = conn.execute(
             "INSERT INTO tasks (created_at, department, location, priority, description, sla_due) "
             "VALUES (?,?,?,?,?,?)",

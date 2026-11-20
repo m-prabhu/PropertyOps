@@ -348,6 +348,24 @@ def main() -> None:
     missing = tools.getRoster("nobody", 0)
     check("an unknown name returns NOT_FOUND", missing["status"] == "NOT_FOUND", missing)
 
+    # --- unknown rooms and duplicate tasks -----------------------------
+    section("bad room numbers and duplicate tasks")
+
+    wrong_room = tools.getGuestContext("498")
+    check("an unknown room explains the valid range and says not to retry",
+          wrong_room["status"] == "NOT_FOUND"
+          and "401 to 408" in wrong_room["message"]
+          and wrong_room["hints"].get("next"), wrong_room)
+
+    task_one = tools.createDepartmentTask("maintenance", "408", "emergency",
+                                          "Broken air conditioning in room 408")
+    task_two = tools.createDepartmentTask("maintenance", "408", "emergency",
+                                          "Broken air conditioning in room 408")
+    check("an identical open task is not raised twice",
+          task_two["ok"] and task_two["data"].get("duplicate") is True
+          and task_two["data"]["task_id"] == task_one["data"]["task_id"],
+          task_two)
+
     # --- seed coherence -----------------------------------------------
     section("seed coherence")
 
