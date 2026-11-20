@@ -135,15 +135,12 @@ def main() -> None:
     print("\n6. a comp above the ceiling")
     obs, state = run_turn("Comp Mr Rao five thousand rupees for the trouble.")
     seen = tools_seen(obs)
-    comp = seen.get("applyComp", {})
-    statuses = comp.get("statuses") or {}
     comps = state.get("comps") or []
-    record("consults policy or attempts the comp",
-           "getPolicy" in seen or "applyComp" in seen,
-           f"tools={list(seen)}")
-    record("records nothing without a named approver",
-           not [c for c in comps if not c.get("approved_by")],
-           f"comps={comps}")
+    record("consults policy", "getPolicy" in seen, f"tools={list(seen)}")
+    record("does not find itself an approver in the roster",
+           "getRoster" not in seen, f"tools={list(seen)}")
+    record("records nothing when the manager has not approved",
+           not comps, f"comps={comps}")
 
     passed = sum(1 for _, ok, _ in results if ok)
     print(f"\n{passed}/{len(results)} conversation checks passed")
