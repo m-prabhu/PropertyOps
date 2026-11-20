@@ -154,6 +154,19 @@ def main() -> None:
     check("an in-policy comp records NO approver, even if one is passed",
           within["ok"] and not within["data"].get("approved_by"), within)
 
+    # A pending request may not be sidestepped by quietly lowering the figure.
+    big = tools.applyComp("G-1002", 5000, "large request")
+    sneak = tools.applyComp("G-1002", 2500, "quietly settle for less")
+    check("lowering the amount does not bypass the approval gate",
+          big["status"] == "APPROVAL_REQUIRED"
+          and sneak["status"] == "APPROVAL_REQUIRED"
+          and pending_count() >= 1, sneak)
+
+    named = tools.applyComp("G-1002", 2500, "manager agreed 2500", approved_by="Ravi")
+    check("a named approval records the approver and closes the request",
+          named["ok"] and named["data"].get("approved_by") == "Ravi"
+          and pending_count() == 0, named)
+
     task = tools.createDepartmentTask("maintenance", "408", "high", "Inspect AC unit")
     check("task created with SLA", task["ok"] and task["data"]["sla_minutes"] == 30, task)
 

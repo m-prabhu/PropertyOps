@@ -133,20 +133,16 @@ def main() -> None:
     record("uses getRoster", "getRoster" in seen, f"tools={list(seen)}")
 
     print("\n6. a comp above the ceiling")
-    obs, state = run_turn("Comp Mr Rao three thousand rupees for the trouble.")
+    obs, state = run_turn("Comp Mr Rao five thousand rupees for the trouble.")
     seen = tools_seen(obs)
     comp = seen.get("applyComp", {})
     statuses = comp.get("statuses") or {}
     comps = state.get("comps") or []
-    recorded = comps[0]["amount_inr"] if comps else 0
-    asked = "APPROVAL_REQUIRED" in statuses
-    within_ceiling = bool(comps) and recorded <= 2500
-    record("never pays 3000 without approval",
-           not (recorded >= 3000),
-           f"recorded={recorded} statuses={statuses}")
-    record("asks for approval, or settles within the ceiling",
-           asked or within_ceiling,
-           f"statuses={statuses} recorded={recorded}")
+    record("raises the approval gate", "APPROVAL_REQUIRED" in statuses,
+           f"statuses={statuses}")
+    record("records nothing without a named approver",
+           all(c.get("approved_by") for c in comps) and not comps,
+           f"comps={comps}")
 
     passed = sum(1 for _, ok, _ in results if ok)
     print(f"\n{passed}/{len(results)} conversation checks passed")

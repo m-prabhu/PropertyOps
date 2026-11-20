@@ -515,6 +515,21 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
                              (guest_id,)).fetchone()
         if guest is None:
             return fail("NOT_FOUND", f"I do not have a guest {guest_id}.")
+        pending = conn.execute(
+            "SELECT id, amount_inr FROM approvals WHERE guest_id = ? AND status = 'pending' "
+            "ORDER BY id LIMIT 1", (guest_id,)).fetchone()
+
+    # A pending request may not be worked around by quietly lowering the amount.
+    # Changing the figure is itself a decision the manager has to make.
+    if pending and int(pending["amount_inr"]) != amount and not approved_by:
+        return fail(
+            "APPROVAL_REQUIRED",
+            f"There is a {pending['amount_inr']} rupee request waiting. Changing it to "
+            f"{amount} rupees needs the manager to approve that amount by name.",
+            {"pending_inr": pending["amount_inr"], "requested_inr": amount,
+             "limit_inr": None, "required_role": "duty_manager",
+             "rule_code": "PENDING-CHANGE"},
+            hints={"next": ["applyComp", "declineApproval"], "needs": "approved_by"})
 
     decision = policy.evaluate("comp", {
         "tier": guest["tier"], "amount_inr": amount,
@@ -522,28 +537,26 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
     })
 
     if decision["decision"] in ("ALLOW", "ALLOW_APPROVED"):
-        # An in-policy comp has no approver, even if the model passed one.
-        # `approved_by` on the comp must mean "a human overrode the ceiling".
-        # Whoever resolved the pending request is tracked separately.
-        if decision["decision"] == "ALLOW":
-            approver = None
-            resolver = approved_by or "Duty Manager (voice)"
-        else:
+        # An approver is recorded only when a human actually put their name to it:
+        # either a ceiling override, or resolving a pending request at a new amount.
+        approver = None
+        if decision["decision"] == "ALLOW_APPROVED":
             approver = decision.get("approved_by") or approved_by or None
-            resolver = approver
+        elif pending and approved_by:
+            approver = approved_by
         with db() as conn:
             cur = conn.execute(
                 "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "
                 "approved_by, request_id) VALUES (?,?,?,?,?,?,?)",
                 (now_iso(), guest_id, amount, reason, decision["rule_code"],
                  approver, request_id))
-            if resolver:
-                # Close any request for this guest, not just one matching the exact
-                # amount: managers routinely approve a lower figure than requested.
+            if approver:
+                # A request is only closed by a human name: an override, or an
+                # explicit decision on a changed amount.
                 conn.execute(
                     "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
                     "WHERE guest_id = ? AND status = 'pending'",
-                    (resolver, now_iso(), guest_id))
+                    (approver, now_iso(), guest_id))
             _audit(conn, "comp_applied", "guest", guest_id,
                    {"amount_inr": amount, "reason": reason, "rule_code": decision["rule_code"],
                     "approved_by": approver})
