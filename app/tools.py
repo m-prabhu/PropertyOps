@@ -470,6 +470,9 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
         amount = int(amount_inr)
     except (TypeError, ValueError):
         return fail("ERROR", "I need the compensation as a whole number of rupees.")
+    if amount <= 0:
+        return fail("ERROR", "A compensation has to be a positive amount.",
+                    {"requested_inr": amount})
 
     with db() as conn:
         if request_id:

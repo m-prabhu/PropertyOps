@@ -236,13 +236,23 @@ to a known demo state. `POST /api/reset` does the same on demand.
 ## Tests
 
 ```bash
-.venv/Scripts/python -m scripts.spec_tests
+.venv/Scripts/python -m scripts.spec_tests        # 68 checks, logic, no network
+.venv/Scripts/python -m scripts.contract_tests    # HTTP contract, localhost
+.venv/Scripts/python -m scripts.contract_tests https://propertyops-lemd.onrender.com
 ```
 
-**68 checks**, covering every policy branch (including the same amount at 15:00 and 23:40),
-the authority ladder, escalation, all five workflows, roster lookups, availability, task
-resolution by description, error semantics, idempotency on money writes, approval closure
-on decline or partial approval, and the SLA alert firing once rather than on every poll.
+**`spec_tests`** — 68 checks against real SQLite: every policy branch (including the same
+amount at 15:00 and 23:40), the authority ladder, escalation, all five workflows, roster
+lookups, availability, task resolution by description, error semantics, idempotency on
+money writes, approval closure on decline or partial approval, and the SLA alert firing
+once rather than on every poll.
+
+**`contract_tests`** — every tool over HTTP the way the agent's executor calls it: envelope
+shape, speakable messages, and fourteen hostile inputs (unknown room, bogus status, zero
+comp, bad date, unknown partner). Also asserts that nothing ever returns a 5xx.
+
+Run the contract suite against the deployed URL before a demo — it is the only check that
+sees the real environment, and it resets the property when it finishes.
 
 They run against a real SQLite database, not mocks.
 
