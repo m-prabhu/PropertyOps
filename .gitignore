@@ -21,3 +21,6 @@ docs/DEMO.md
 # os
 .DS_Store
 Thumbs.db
+
+# agent notes, kept local
+AGENTS.md
