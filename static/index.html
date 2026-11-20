@@ -318,6 +318,7 @@
     color: var(--ink-faint);
   }
   .entry b { font-weight: 600; }
+  .entry .actor { color: var(--ink-faint); }
   .entry.blocked b { color: var(--signal); }
   .entry .who { color: var(--ink-faint); overflow-wrap: anywhere; }
 
@@ -366,17 +367,6 @@
   .key { cursor: pointer; }
   .key:hover { border-color: var(--ink-faint); }
   .key:hover .key-no { color: var(--ink); }
-  .hk {
-    display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    margin-right: 5px;
-    vertical-align: 1px;
-  }
-  .hk.dirty { background: #9A6B2F; }
-  .hk.inspected { background: #3E7C6A; }
-  .hk.clean { display: none; }
-  .entry .actor { color: var(--ink-faint); }
 
   /* ---- room drawer ----------------------------------------------- */
   .scrim { position: fixed; inset: 0; background: rgba(15,29,39,.28); z-index: 40; }
@@ -619,7 +609,7 @@ function buildRack(rooms) {
                role="button" tabindex="0"
                aria-label="Room ${r.room_no}, ${r.category}, ${r.status.replace("_", " ")}, housekeeping ${r.housekeeping}. Open details.">
             <span class="key-no">${r.room_no}</span>
-            <span class="key-meta"><i class="hk ${r.housekeeping}" aria-hidden="true"></i><span class="key-cat">${
+            <span class="key-meta"><span class="key-cat">${
               r.status === "out_of_service" ? "out of service" : r.category}</span></span>
           </div>`).join("")}
       </div>`).join("");
@@ -629,9 +619,7 @@ function buildRack(rooms) {
       el,
       meta: el.querySelector(".key-meta"),
       cat: el.querySelector(".key-cat"),
-      hk: el.querySelector(".hk"),
       status: el.dataset.status,
-      housekeeping: el.querySelector(".hk").classList[1],
     });
   });
   built = true;
@@ -642,12 +630,6 @@ function renderRack(rooms) {
   for (const r of rooms) {
     const cell = cells.get(r.room_no);
     if (!cell) continue;
-
-    if (cell.housekeeping !== r.housekeeping) {
-      cell.hk.classList.remove(cell.housekeeping);
-      cell.hk.classList.add(r.housekeeping);
-      cell.housekeeping = r.housekeeping;
-    }
 
     if (cell.status !== r.status) {
       cell.status = r.status;

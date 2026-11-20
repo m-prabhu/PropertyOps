@@ -139,8 +139,8 @@ failures — they're the system working. Only `ERROR` and `NOT_FOUND` are.
 One page, no build step, designed for a projector: the room rack is the hero, everything
 else is a quiet rail.
 
-- **Room rack** — floors 8→4, status colour, housekeeping mark, click for a detail drawer
-  (guest, folio, tasks, moves, activity).
+- **Room rack** — floors 8→4, status colour only, click for a detail drawer (guest,
+  folio, tasks, moves, activity, housekeeping).
 - **Needs you** — the approval card, with the amount, the ceiling, the rule code, and
   Approve / Decline. Voice and click write the same record.
 - **Department tasks** — SLA bars that turn amber, then red.
