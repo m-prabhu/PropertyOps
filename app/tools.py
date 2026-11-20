@@ -615,6 +615,37 @@ def createDepartmentTask(department: str, location: str, priority: str,
                   {"task_id": cur.lastrowid, "sla_due": due, "sla_minutes": sla_minutes})
 
 
+def findTask(query: str = "") -> dict:
+    """Resolve a spoken description to a task id before changing anything."""
+    needle = str(query or "").strip()
+    with db() as conn:
+        sql = ("SELECT task_id, department, location, priority, description, status, "
+               "sla_due, assignee FROM tasks WHERE status IN ('open','in_progress')")
+        params: list = []
+        if needle:
+            like = f"%{needle.lower()}%"
+            sql += (" AND (lower(description) LIKE ? OR lower(location) LIKE ? "
+                    "OR lower(department) LIKE ?)")
+            params = [like, like, like]
+        rows = _rows(conn.execute(sql + " ORDER BY sla_due", params))
+
+    if not rows:
+        return fail("NOT_FOUND", f"No open task matches '{query}'.",
+                    {"open_tasks": 0},
+                    hints={"next": ["getShiftSummary", "createDepartmentTask"]})
+
+    if len(rows) == 1:
+        task = rows[0]
+        return ok(
+            f"Found one: {task['description']} at {task['location']} "
+            f"({task['department']}, {task['priority']}). Task {task['task_id']}.",
+            {"tasks": rows, "task_id": task["task_id"]})
+
+    listed = "; ".join(f"{t['task_id']}: {t['description']}" for t in rows[:4])
+    return ok(f"{len(rows)} open tasks match: {listed}.",
+              {"tasks": rows[:5], "count": len(rows)})
+
+
 def updateTask(task_id: int, status: str, note: str | None = None) -> dict:
     status = str(status).strip().lower()
     if status not in TASK_STATUSES:
@@ -623,14 +654,19 @@ def updateTask(task_id: int, status: str, note: str | None = None) -> dict:
     with db() as conn:
         task = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (int(task_id),)).fetchone()
         if task is None:
-            return fail("NOT_FOUND", f"No task number {task_id}.")
+            return fail("NOT_FOUND", f"No task number {task_id}.",
+                        hints={"next": ["findTask", "getShiftSummary"]})
         closed = now_iso() if status in ("done", "cancelled") else None
         conn.execute("UPDATE tasks SET status = ?, note = COALESCE(?, note), closed_at = ? "
                      "WHERE task_id = ?", (status, note, closed, int(task_id)))
         _audit(conn, "task_updated", "task", str(task_id),
-               {"from": task["status"], "to": status, "note": note})
-        return ok(f"Task {task_id} is now {status.replace('_', ' ')}.",
-                  {"task_id": int(task_id), "status": status})
+               {"from": task["status"], "to": status, "note": note,
+                "description": task["description"]})
+        return ok(
+            f"Marked '{task['description']}' at {task['location']} as "
+            f"{status.replace('_', ' ')}.",
+            {"task_id": int(task_id), "status": status,
+             "description": task["description"], "location": task["location"]})
 
 
 def getAvailabilitySummary() -> dict:
@@ -1011,6 +1047,7 @@ REGISTRY = {
     "declineApproval": declineApproval,
     "createDepartmentTask": createDepartmentTask,
     "updateTask": updateTask,
+    "findTask": findTask,
     "getPolicy": getPolicy,
     "scheduleFollowup": scheduleFollowup,
     "findPartnerHotel": findPartnerHotel,

@@ -206,6 +206,20 @@
     {
       "type": "function",
       "function": {
+        "name": "findTask",
+        "description": "Find open tasks by description, location or department, and get their task ids. Always call this before updateTask when the manager refers to a task by what it is, not by number.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Words from the task, e.g. 'AC filter', 'drain', 'towels'. Empty string lists all open tasks." }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "updateTask",
         "description": "Close, start, or cancel a department task. Closing the last defect task on a room allows it to return to sale.",
         "parameters": {

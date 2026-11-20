@@ -366,6 +366,15 @@ def main() -> None:
           and task_two["data"]["task_id"] == task_one["data"]["task_id"],
           task_two)
 
+    found = tools.findTask("AC filter")
+    check("a spoken description resolves to the right task",
+          found["ok"] and "filter" in found["data"]["tasks"][0]["description"].lower(),
+          found)
+
+    closed = tools.updateTask(found["data"]["task_id"], "done", "fixed by Suresh")
+    check("closing a task names it in the spoken confirmation",
+          closed["ok"] and "filter" in closed["message"].lower(), closed)
+
     # --- seed coherence -----------------------------------------------
     section("seed coherence")
 
