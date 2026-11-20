@@ -102,16 +102,24 @@ def evaluate(topic: str, ctx: dict) -> dict[str, Any]:
     if approved_by:
         conn = connect()
         try:
-            staff = conn.execute(
-                "SELECT name, role, authority_inr FROM staff "
-                "WHERE lower(name) = lower(?) AND active = 1", (approved_by,)
-            ).fetchone()
+            label = str(approved_by).strip().lower()
+            if label in ("duty manager (voice)", "duty manager"):
+                # The person speaking is whichever duty manager is on shift.
+                staff = conn.execute(
+                    "SELECT name, role, authority_inr FROM staff "
+                    "WHERE role = 'duty_manager' AND active = 1 AND on_duty = 1 "
+                    "ORDER BY authority_inr DESC LIMIT 1").fetchone()
+            else:
+                staff = conn.execute(
+                    "SELECT name, role, authority_inr FROM staff "
+                    "WHERE lower(name) = lower(?) AND active = 1", (approved_by,)
+                ).fetchone()
         finally:
             conn.close()
         if staff and amount <= staff["authority_inr"]:
             return {"decision": "ALLOW_APPROVED", **base,
-                    "approved_by": staff["name"], "approved_role": staff["role"],
-                    "message": f"Approved by {staff['name']} ({staff['role']})."}
+                    "approved_by": approved_by, "approved_role": staff["role"],
+                    "message": f"Approved by {approved_by} ({staff['role']})."}
         who = staff["name"] if staff else approved_by
         ceiling = staff["authority_inr"] if staff else 0
         return {"decision": "REQUIRE_APPROVAL", **base,

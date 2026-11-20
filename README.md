@@ -169,7 +169,10 @@ else is a quiet rail.
 - **Room rack** — floors 8→4, status colour only, click for a detail drawer (guest,
   folio, tasks, moves, activity, housekeeping).
 - **Needs you** — the approval card, with the amount, the ceiling, the rule code, and
-  Approve / Decline. Voice and click write the same record.
+  Approve / Decline. Both paths write the same record: speaking "approve" records
+  `Duty Manager (voice)`, clicking records the signed-in name. Above ₹500 a comp always
+  needs one of them; the guest's ceiling says how much may be spent, not that the agent
+  may decide to spend it.
 - **Department tasks** — SLA bars that turn amber, then red.
 - **Shift ledger** — every action with its actor.
 - **Metrics** — median time to close a task, comps applied vs blocked by policy, SLA
