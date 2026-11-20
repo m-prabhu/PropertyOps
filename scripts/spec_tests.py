@@ -167,6 +167,14 @@ def main() -> None:
           named["ok"] and named["data"].get("approved_by") == "Ravi"
           and pending_count() == 0, named)
 
+    quiet = tools.applyComp("G-1004", 1200, "gold guest, inside her ceiling")
+    check("a comp above 500 needs a name even when inside the ceiling",
+          quiet["status"] == "APPROVAL_REQUIRED"
+          and quiet["data"].get("auto_limit_inr") == 500, quiet)
+
+    token = tools.applyComp("G-1004", 300, "token goodwill")
+    check("a comp at or below 500 clears without a name", token["ok"], token)
+
     task = tools.createDepartmentTask("maintenance", "408", "high", "Inspect AC unit")
     check("task created with SLA", task["ok"] and task["data"]["sla_minutes"] == 30, task)
 

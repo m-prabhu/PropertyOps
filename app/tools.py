@@ -24,6 +24,11 @@ SLA_MINUTES = {"emergency": 15, "high": 30, "medium": 120, "low": 240}
 ROOM_STATUSES = {"vacant", "occupied", "blocked", "out_of_service"}
 TASK_STATUSES = {"open", "in_progress", "done", "cancelled"}
 
+# Comps at or below this clear without a name. Anything above it needs a human,
+# even when it sits inside the guest's ceiling: the ceiling says how much the desk
+# may spend, not that the agent may decide to spend it.
+AUTO_COMP_LIMIT = 500
+
 
 # --- envelope --------------------------------------------------------
 
@@ -537,13 +542,21 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
     })
 
     if decision["decision"] in ("ALLOW", "ALLOW_APPROVED"):
-        # An approver is recorded only when a human actually put their name to it:
-        # either a ceiling override, or resolving a pending request at a new amount.
+        # Above the automatic limit, money only moves with a human name on it.
+        if amount > AUTO_COMP_LIMIT and not approved_by:
+            return fail(
+                "APPROVAL_REQUIRED",
+                f"{amount} rupees needs a named approver. Compensations above "
+                f"{AUTO_COMP_LIMIT} rupees never clear themselves.",
+                {"requested_inr": amount, "auto_limit_inr": AUTO_COMP_LIMIT,
+                 "limit_inr": decision.get("limit_inr"),
+                 "required_role": policy.required_role(amount),
+                 "rule_code": decision["rule_code"]},
+                hints={"next": ["applyComp"], "needs": "approved_by"})
+
         approver = None
-        if decision["decision"] == "ALLOW_APPROVED":
+        if amount > AUTO_COMP_LIMIT:
             approver = decision.get("approved_by") or approved_by or None
-        elif pending and approved_by:
-            approver = approved_by
         with db() as conn:
             cur = conn.execute(
                 "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "

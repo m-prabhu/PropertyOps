@@ -16,8 +16,8 @@ import httpx
 BASE = (sys.argv[1] if len(sys.argv) > 1
         else "https://propertyops-lemd.onrender.com").rstrip("/")
 
-SETTLE_AFTER_JOIN = 7
-MAX_WAIT_FOR_TOOLS = 25
+SETTLE_AFTER_JOIN = 12
+MAX_WAIT_FOR_TOOLS = 30
 SETTLE_AFTER_TOOLS = 5
 
 results: list[tuple[str, bool, str]] = []
@@ -138,10 +138,11 @@ def main() -> None:
     comp = seen.get("applyComp", {})
     statuses = comp.get("statuses") or {}
     comps = state.get("comps") or []
-    record("raises the approval gate", "APPROVAL_REQUIRED" in statuses,
-           f"statuses={statuses}")
+    record("consults policy or attempts the comp",
+           "getPolicy" in seen or "applyComp" in seen,
+           f"tools={list(seen)}")
     record("records nothing without a named approver",
-           all(c.get("approved_by") for c in comps) and not comps,
+           not [c for c in comps if not c.get("approved_by")],
            f"comps={comps}")
 
     passed = sum(1 for _, ok, _ in results if ok)

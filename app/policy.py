@@ -133,3 +133,8 @@ def tier_ceiling(tier: str, local_time: datetime | None = None) -> dict:
     """The comp ceiling that currently applies to a tier, including time-of-day rules."""
     d = evaluate("comp", {"tier": tier, "amount_inr": 0, "local_time": local_time or clock_now()})
     return {"limit_inr": d.get("limit_inr"), "rule_code": d.get("rule_code")}
+
+
+def required_role(amount: int) -> str | None:
+    """The lowest role whose authority covers this amount."""
+    return _required_role(amount)

@@ -105,6 +105,12 @@ engine reading context rather than a constant.
 **Authority is an override ceiling, not a bypass.** A staff member's `authority_inr` says
 who may *approve* going above the tier limit; it never raises the limit itself.
 
+**Autonomy has a floor.** Compensations of ₹500 or less clear themselves. Everything above
+that needs a named approver, even when it sits inside the guest's ceiling — the ceiling says
+how much the desk *may* spend, not that the agent may decide to spend it. Without that rule
+the agent could quietly substitute a smaller amount, slip under the ceiling, and spend money
+nobody authorised.
+
 `PO_SIM_HOUR=23` pins the hour so time-of-day policy is reproducible whenever the demo
 runs. Unset it and the real clock is used.
 
