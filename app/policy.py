@@ -88,8 +88,10 @@ def evaluate(topic: str, ctx: dict) -> dict[str, Any]:
         "message": best["message"],
     }
 
-    # Escalation rules have no ceiling; matching them means "this goes upstairs".
-    if best["limit_inr"] is None and best["escalate_to"]:
+    # Escalation is a demand for a *more senior* human, not an absolute block:
+    # the GM can clear it once they supply their name.
+    approved_by = ctx.get("approved_by")
+    if best["limit_inr"] is None and best["escalate_to"] and not approved_by:
         return {"decision": "ESCALATE", **base,
                 "message": f"{amount} INR: {best['message']}"}
 

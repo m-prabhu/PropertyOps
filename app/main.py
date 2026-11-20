@@ -320,7 +320,7 @@ async def state() -> dict:
             "SELECT name, role, authority_inr FROM staff WHERE active = 1 ORDER BY authority_inr")]
         approvals = [dict(r) for r in conn.execute(
             "SELECT a.id, a.created_at, a.guest_id, a.amount_inr, a.reason, a.rule_code, "
-            "g.name, r.room_no FROM approvals a "
+            "a.code, g.name, r.room_no FROM approvals a "
             "JOIN guests g ON g.guest_id = a.guest_id "
             "LEFT JOIN reservations r ON r.guest_id = a.guest_id AND r.status = 'in_house' "
             "WHERE a.status = 'pending' ORDER BY a.id")]
@@ -465,7 +465,7 @@ def approve(approval_id: int, body: Decision) -> dict:
         raise HTTPException(404, "No pending approval with that id")
 
     result = toolsmod.applyComp(row["guest_id"], row["amount_inr"], row["reason"],
-                                 approved_by=body.by)
+                                approved_by=body.by, approval_code=row["code"] or "")
     if result["ok"]:
         conn = dbmod.connect()
         try:

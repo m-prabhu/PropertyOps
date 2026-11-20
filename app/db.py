@@ -18,7 +18,7 @@ DB_PATH = ROOT / "propertyops.db"
 
 # Bump when the schema changes. Existing databases are dropped and reseeded
 # rather than migrated, because this app only ever holds demo state.
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 
 ALL_TABLES = (
     "meta", "property", "rooms", "guests", "reservations", "folio_charges", "tasks",
@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   amount_inr INTEGER NOT NULL,
   reason     TEXT NOT NULL,
   rule_code  TEXT,
+  code       TEXT,
   status     TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','declined')),
   decided_by TEXT,
   decided_at TEXT

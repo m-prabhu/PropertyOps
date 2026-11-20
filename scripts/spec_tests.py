@@ -29,6 +29,25 @@ def section(title: str) -> None:
     print(f"\n== {title}")
 
 
+def pending_code(guest_id: str) -> str:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            "SELECT code FROM approvals WHERE guest_id = ? AND status = 'pending' "
+            "ORDER BY id DESC LIMIT 1", (guest_id,)).fetchone()
+    finally:
+        conn.close()
+    return row["code"] if row else ""
+
+
+def approve_with_code(guest_id: str, amount: int, reason: str = "test",
+                      by: str = "Ravi") -> dict:
+    """Raise the request, then approve it the way a manager reading the card would."""
+    tools.applyComp(guest_id, amount, reason)
+    return tools.applyComp(guest_id, amount, reason, approved_by=by,
+                           approval_code=pending_code(guest_id))
+
+
 def main() -> None:
     db.init(reset=True)
 
@@ -118,7 +137,9 @@ def main() -> None:
           and blocked["data"]["limit_inr"] in (1500, 2500), blocked)
 
     approved = tools.applyComp("G-1001", 3000, "room defect and 60 minute wait",
-                                approved_by="Ravi", request_id="comp-1")
+                               approved_by="Ravi",
+                               approval_code=pending_code("G-1001"),
+                               request_id="comp-1")
     check("approved by duty manager -> DONE with approver recorded",
           approved["ok"] and approved["data"]["approved_by"] == "Ravi", approved)
 
@@ -144,9 +165,8 @@ def main() -> None:
           declined["ok"] and pending_count() == 0, declined)
 
     tools.applyComp("G-1001", 4000, "request the manager will reduce")
-    reduced = tools.applyComp("G-1001", 2500, "manager authorised 2500 only",
-                              approved_by="Ravi")
-    check("approving a LOWER amount also closes the original request",
+    reduced = approve_with_code("G-1001", 2500, "manager authorised 2500 only")
+    check("authorising a lower amount records it and closes the request",
           reduced["ok"] and pending_count() == 0, reduced)
 
     within = tools.applyComp("G-1001", 500, "small goodwill, well inside the ceiling",
@@ -162,15 +182,15 @@ def main() -> None:
           and sneak["status"] == "APPROVAL_REQUIRED"
           and pending_count() >= 1, sneak)
 
-    named = tools.applyComp("G-1002", 2500, "manager agreed 2500", approved_by="Ravi")
-    check("a named approval records the approver and closes the request",
+    named = approve_with_code("G-1002", 2500, "manager agreed 2500")
+    check("a code-backed approval records the approver and closes the request",
           named["ok"] and named["data"].get("approved_by") == "Ravi"
           and pending_count() == 0, named)
 
     quiet = tools.applyComp("G-1004", 1200, "gold guest, inside her ceiling")
-    check("a comp above 500 needs a name even when inside the ceiling",
+    check("a comp above 500 needs the approval code",
           quiet["status"] == "APPROVAL_REQUIRED"
-          and quiet["data"].get("auto_limit_inr") == 500, quiet)
+          and quiet["hints"].get("needs") == "approval_code", quiet)
 
     token = tools.applyComp("G-1004", 300, "token goodwill")
     check("a comp at or below 500 clears without a name", token["ok"], token)

@@ -10,6 +10,7 @@ recover in one turn instead of apologising.
 from __future__ import annotations
 
 import json
+import random
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -499,7 +500,8 @@ def extendStay(guest_id: str, new_departure: str, rate_inr: int | None = None,
 
 
 def applyComp(guest_id: str, amount_inr: int, reason: str,
-               approved_by: str | None = None, request_id: str | None = None) -> dict:
+              approved_by: str | None = None, approval_code: str = "",
+              request_id: str | None = None) -> dict:
     try:
         amount = int(amount_inr)
     except (TypeError, ValueError):
@@ -521,96 +523,92 @@ def applyComp(guest_id: str, amount_inr: int, reason: str,
         if guest is None:
             return fail("NOT_FOUND", f"I do not have a guest {guest_id}.")
         pending = conn.execute(
-            "SELECT id, amount_inr FROM approvals WHERE guest_id = ? AND status = 'pending' "
-            "ORDER BY id LIMIT 1", (guest_id,)).fetchone()
-
-    # A pending request may not be worked around by quietly lowering the amount.
-    # Changing the figure is itself a decision the manager has to make.
-    if pending and int(pending["amount_inr"]) != amount and not approved_by:
-        return fail(
-            "APPROVAL_REQUIRED",
-            f"There is a {pending['amount_inr']} rupee request waiting. Changing it to "
-            f"{amount} rupees needs the manager to approve that amount by name.",
-            {"pending_inr": pending["amount_inr"], "requested_inr": amount,
-             "limit_inr": None, "required_role": "duty_manager",
-             "rule_code": "PENDING-CHANGE"},
-            hints={"next": ["applyComp", "declineApproval"], "needs": "approved_by"})
+            "SELECT id, amount_inr, code FROM approvals WHERE guest_id = ? "
+            "AND status = 'pending' ORDER BY id DESC LIMIT 1", (guest_id,)).fetchone()
 
     decision = policy.evaluate("comp", {
         "tier": guest["tier"], "amount_inr": amount,
-        "local_time": clock_now(), "approved_by": approved_by,
+        "local_time": clock_now(), "approved_by": approved_by or None,
     })
 
-    if decision["decision"] in ("ALLOW", "ALLOW_APPROVED"):
-        # Above the automatic limit, money only moves with a human name on it.
-        if amount > AUTO_COMP_LIMIT and not approved_by:
+    if amount > AUTO_COMP_LIMIT:
+        # A code shown only on the approval card is proof that a person looked at
+        # the request. The model can invent a name; it cannot invent this code.
+        supplied = str(approval_code or "").strip()
+        approved = (
+            pending is not None
+            and int(pending["amount_inr"]) == amount
+            and supplied != ""
+            and supplied == str(pending["code"] or "")
+        )
+        if not approved:
+            same_request = pending is not None and int(pending["amount_inr"]) == amount
+            code = str(pending["code"] or "") if same_request else ""
+            with db() as conn:
+                if same_request and code:
+                    pass  # the card keeps the code the manager is reading
+                elif same_request:
+                    code = f"{random.randint(1000, 9999)}"
+                    conn.execute("UPDATE approvals SET code = ?, reason = ? WHERE id = ?",
+                                 (code, reason, pending["id"]))
+                elif pending is None:
+                    code = f"{random.randint(1000, 9999)}"
+                    conn.execute(
+                        "INSERT INTO approvals (created_at, guest_id, amount_inr, reason, "
+                        "rule_code, code) VALUES (?,?,?,?,?,?)",
+                        (now_iso(), guest_id, amount, reason,
+                         decision.get("rule_code"), code))
+                else:
+                    code = f"{random.randint(1000, 9999)}"
+                    conn.execute(
+                        "UPDATE approvals SET amount_inr = ?, reason = ?, rule_code = ?, "
+                        "code = ?, created_at = ? WHERE id = ?",
+                        (amount, reason, decision.get("rule_code"), code,
+                         now_iso(), pending["id"]))
+                _audit(conn, "comp_blocked", "guest", guest_id,
+                       {"amount_inr": amount, "reason": reason,
+                        "rule": decision.get("rule_code"),
+                        "required_role": policy.required_role(amount)})
             return fail(
                 "APPROVAL_REQUIRED",
-                f"{amount} rupees needs a named approver. Compensations above "
-                f"{AUTO_COMP_LIMIT} rupees never clear themselves.",
-                {"requested_inr": amount, "auto_limit_inr": AUTO_COMP_LIMIT,
+                f"{amount} rupees needs the manager's approval. The approval card shows "
+                "a four digit code; read it to me and I will record the compensation.",
+                {"requested_inr": amount,
                  "limit_inr": decision.get("limit_inr"),
                  "required_role": policy.required_role(amount),
-                 "rule_code": decision["rule_code"]},
-                hints={"next": ["applyComp"], "needs": "approved_by"})
+                 "rule_code": decision.get("rule_code")},
+                hints={"needs": "approval_code"})
 
+        if decision["decision"] == "REQUIRE_APPROVAL":
+            return fail("APPROVAL_REQUIRED", decision["message"],
+                        {"requested_inr": amount,
+                         "limit_inr": decision.get("limit_inr"),
+                         "required_role": decision.get("required_role"),
+                         "rule_code": decision.get("rule_code")},
+                        hints={"needs": "approved_by"})
+        approver = approved_by or "Duty Manager (voice)"
+    else:
         approver = None
-        if amount > AUTO_COMP_LIMIT:
-            approver = decision.get("approved_by") or approved_by or None
-        with db() as conn:
-            cur = conn.execute(
-                "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "
-                "approved_by, request_id) VALUES (?,?,?,?,?,?,?)",
-                (now_iso(), guest_id, amount, reason, decision["rule_code"],
-                 approver, request_id))
-            if approver:
-                # A request is only closed by a human name: an override, or an
-                # explicit decision on a changed amount.
-                conn.execute(
-                    "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
-                    "WHERE guest_id = ? AND status = 'pending'",
-                    (approver, now_iso(), guest_id))
-            _audit(conn, "comp_applied", "guest", guest_id,
-                   {"amount_inr": amount, "reason": reason, "rule_code": decision["rule_code"],
-                    "approved_by": approver})
-        who = approver
-        tail = f" Approved by {who}." if who else " Within the guest's ceiling."
-        return ok(f"Compensation of {amount} rupees recorded for {guest['name']}." + tail,
-                  {"comp_id": cur.lastrowid, "amount_inr": amount,
-                   "rule_code": decision["rule_code"], "approved_by": who})
-
-    if decision["decision"] == "ESCALATE":
-        with db() as conn:
-            _audit(conn, "comp_escalated", "guest", guest_id,
-                   {"amount_inr": amount, "reason": reason, "rule": decision["rule_code"]})
-        return fail("ESCALATE",
-                    f"{amount} rupees is above what this desk can approve. "
-                    f"It has to go to the General Manager.",
-                    {"amount_inr": amount, "escalate_to": decision["escalate_to"],
-                     "rule_code": decision["rule_code"]},
-                    hints={"next": ["getShiftSummary"]})
 
     with db() as conn:
-        _audit(conn, "comp_blocked", "guest", guest_id,
-               {"amount_inr": amount, "reason": reason, "rule": decision["rule_code"],
-                "required_role": decision["required_role"]})
-        pending = conn.execute(
-            "SELECT id FROM approvals WHERE guest_id = ? AND amount_inr = ? AND status = 'pending'",
-            (guest_id, amount)).fetchone()
-        if pending:
-            approval_id = pending["id"]
-        else:
-            cur = conn.execute(
-                "INSERT INTO approvals (created_at, guest_id, amount_inr, reason, rule_code) "
-                "VALUES (?,?,?,?,?)",
-                (now_iso(), guest_id, amount, reason, decision["rule_code"]))
-            approval_id = cur.lastrowid
-    return fail("APPROVAL_REQUIRED", decision["message"],
-                {"approval_id": approval_id, "requested_inr": amount,
-                 "limit_inr": decision["limit_inr"],
-                 "required_role": decision["required_role"],
-                 "rule_code": decision["rule_code"], "guest_name": guest["name"]},
-                hints={"next": ["applyComp"], "needs": "approved_by"})
+        cur = conn.execute(
+            "INSERT INTO comps (created_at, guest_id, amount_inr, reason, rule_code, "
+            "approved_by, request_id) VALUES (?,?,?,?,?,?,?)",
+            (now_iso(), guest_id, amount, reason, decision.get("rule_code"),
+             approver, request_id))
+        if approver:
+            conn.execute(
+                "UPDATE approvals SET status = 'approved', decided_by = ?, decided_at = ? "
+                "WHERE guest_id = ? AND status = 'pending'",
+                (approver, now_iso(), guest_id))
+        _audit(conn, "comp_applied", "guest", guest_id,
+               {"amount_inr": amount, "reason": reason,
+                "rule_code": decision.get("rule_code"), "approved_by": approver})
+
+    tail = f" Approved by {approver}." if approver else " Within the guest's ceiling."
+    return ok(f"Compensation of {amount} rupees recorded for {guest['name']}." + tail,
+              {"comp_id": cur.lastrowid, "amount_inr": amount,
+               "rule_code": decision.get("rule_code"), "approved_by": approver})
 
 
 def declineApproval(guest_id: str, reason: str, declined_by: str = "") -> dict:

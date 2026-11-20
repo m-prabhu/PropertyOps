@@ -164,9 +164,10 @@
             "guest_id": { "type": "string" },
             "amount_inr": { "type": "integer" },
             "reason": { "type": "string" },
-            "approved_by": { "type": "string", "description": "Name of the staff member who approved it, or an empty string when not yet approved." }
+            "approved_by": { "type": "string", "description": "Who approved it, or an empty string. Use 'Duty Manager (voice)' when the manager approves without naming themselves." },
+            "approval_code": { "type": "string", "description": "The four digit code shown on the approval card, read out by the manager. Empty string when there is no code yet." }
           },
-          "required": ["guest_id", "amount_inr", "reason", "approved_by"]
+          "required": ["guest_id", "amount_inr", "reason", "approved_by", "approval_code"]
         }
       }
     },

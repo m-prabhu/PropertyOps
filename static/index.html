@@ -700,7 +700,7 @@ function renderApprovals(list) {
       <div class="approval-amount">${money(a.amount_inr)}</div>
       <div class="approval-who">${a.name}${a.room_no ? " · room " + a.room_no : ""}</div>
       <div class="approval-why">${a.reason}</div>
-      <div class="approval-rule">Rule ${a.rule_code}. Above the automatic ceiling, so it needs a name against it.</div>
+      <div class="approval-rule">Rule ${a.rule_code}. Code <b>${a.code || "----"}</b> — read it out to approve by voice.</div>
       <div class="approval-actions">
         <button class="btn primary" data-approve="${a.id}">Approve</button>
         <button class="btn" data-decline="${a.id}">Decline</button>
