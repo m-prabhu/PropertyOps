@@ -18,7 +18,7 @@ DB_PATH = ROOT / "propertyops.db"
 
 # Bump when the schema changes. Existing databases are dropped and reseeded
 # rather than migrated, because this app only ever holds demo state.
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 ALL_TABLES = (
     "meta", "property", "rooms", "guests", "reservations", "folio_charges", "tasks",
@@ -252,14 +252,14 @@ STAFF = [
 ]
 
 GUESTS = [
-    ("G-1001", "Mr. Arjun Rao", "gold", "+91 98450 11223", "arjun.rao@example.com", "high floor, quiet room"),
-    ("G-1002", "Ms. Priya Nair", "platinum", "+91 98860 44556", "priya.nair@example.com", "late checkout, spa"),
-    ("G-1003", "Mr. David Fernandes", "silver", "+91 99001 77889", "d.fernandes@example.com", None),
-    ("G-1004", "Dr. Meera Iyer", "gold", "+91 94480 22446", "meera.iyer@example.com", "extra pillows"),
-    ("G-1005", "Mr. Karthik Reddy", "silver", "+91 90080 66554", "karthik.reddy@example.com", None),
-    ("G-2001", "Ms. Ananya Bhat", "silver", "+91 97400 33221", "ananya.bhat@example.com", None),
-    ("G-2002", "Mr. Vikram Shetty", "gold", "+91 96320 55447", "vikram.shetty@example.com", "airport pickup"),
-    ("G-2003", "Ms. Neha Kulkarni", "silver", "+91 90190 44532", "neha.kulkarni@example.com", None),
+    ("G-1001", "Arjun Rao", "gold", "+91 98450 11223", "arjun.rao@example.com", "high floor, quiet room"),
+    ("G-1002", "Priya Nair", "platinum", "+91 98860 44556", "priya.nair@example.com", "late checkout, spa"),
+    ("G-1003", "David Fernandes", "silver", "+91 99001 77889", "d.fernandes@example.com", None),
+    ("G-1004", "Meera Iyer", "gold", "+91 94480 22446", "meera.iyer@example.com", "extra pillows"),
+    ("G-1005", "Karthik Reddy", "silver", "+91 90080 66554", "karthik.reddy@example.com", None),
+    ("G-2001", "Ananya Bhat", "silver", "+91 97400 33221", "ananya.bhat@example.com", None),
+    ("G-2002", "Vikram Shetty", "gold", "+91 96320 55447", "vikram.shetty@example.com", "airport pickup"),
+    ("G-2003", "Neha Kulkarni", "silver", "+91 90190 44532", "neha.kulkarni@example.com", None),
 ]
 
 # Properties we can walk a guest to. Category must be equal or better.

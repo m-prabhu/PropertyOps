@@ -328,17 +328,46 @@ def getGuestContext(room_no: str) -> dict:
     )
 
 
+HONORIFICS = {"mr", "mrs", "ms", "miss", "dr", "shri", "smt", "sri", "mister"}
+
+
+def _name_tokens(value: str) -> list[str]:
+    return [t for t in re.findall(r"[a-z0-9]+", str(value).lower()) if t not in HONORIFICS]
+
+
 def searchGuest(query: str) -> dict:
-    q = f"%{str(query).strip()}%"
+    """Match "Mr Rao", "rao", "arjun" and phone fragments against the guest list."""
+    q = str(query).strip()
+    tokens = _name_tokens(q)
+    digits = re.sub(r"\D", "", q)
+
     with db() as conn:
-        rows = _rows(conn.execute(
-            "SELECT guest_id, name, tier, phone FROM guests "
-            "WHERE name LIKE ? OR phone LIKE ? LIMIT 5", (q, q)))
-    if not rows:
-        return fail("NOT_FOUND", f"No guest matching {query}.",
-                    hints={"next": ["getGuestContext"]})
-    return ok(f"Found {rows[0]['name']}." if len(rows) == 1 else f"{len(rows)} guests match.",
-              {"matches": rows})
+        guests = _rows(conn.execute(
+            "SELECT guest_id, name, tier, phone FROM guests"))
+
+    exact = []
+    for guest in guests:
+        name_tokens = _name_tokens(guest["name"])
+        phone_digits = re.sub(r"\D", "", guest["phone"] or "")
+        if tokens and all(t in name_tokens for t in tokens):
+            exact.append(guest)
+        elif tokens and len(digits) >= 4 and digits in phone_digits:
+            exact.append(guest)
+
+    if exact:
+        return ok(f"Found {exact[0]['name']}." if len(exact) == 1
+                  else f"{len(exact)} guests match.",
+                  {"matches": exact[:5]})
+
+    # Nothing exact: offer the closest name rather than a bare NOT_FOUND.
+    near = [g for g in guests
+            if tokens and any(t in _name_tokens(g["name"]) for t in tokens)]
+    if near:
+        return ok(f"No exact match. Did you mean {near[0]['name']}?",
+                  {"matches": near[:5], "exact": False})
+
+    return fail("NOT_FOUND", f"No guest matching {query}.",
+                hints={"next": ["getGuestContext", "getShiftSummary"]})
 
 
 def getArrivals(room_no: str | None = None, date: str | None = None) -> dict:

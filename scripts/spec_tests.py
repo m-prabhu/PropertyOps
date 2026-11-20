@@ -76,7 +76,7 @@ def main() -> None:
     section("W1 room defect -> move -> comp")
 
     ctx = tools.getGuestContext("408")
-    check("guest context resolves", ctx["ok"] and ctx["data"]["guest"]["name"] == "Mr. Arjun Rao", ctx)
+    check("guest context resolves", ctx["ok"] and ctx["data"]["guest"]["name"] == "Arjun Rao", ctx)
     check("ceiling exposed to agent", ctx["data"]["guest"]["comp_ceiling_inr"] in (1500, 2500), ctx)
 
     bad = tools.moveRoom("G-1001", "408", "508", "test")
