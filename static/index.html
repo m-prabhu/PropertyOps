@@ -457,9 +457,9 @@
 
   <dl class="counters">
     <div class="counter"><dt>occupied</dt><dd id="c-occ">—</dd></div>
-    <div class="counter warn"><dt>out of service</dt><dd id="c-oos">—</dd></div>
+    <div class="counter"><dt>out of service</dt><dd id="c-oos">—</dd></div>
     <div class="counter"><dt>open tasks</dt><dd id="c-tasks">—</dd></div>
-    <div class="counter signal"><dt>comped this shift</dt><dd id="c-comp">—</dd></div>
+    <div class="counter"><dt>comped this shift</dt><dd id="c-comp">—</dd></div>
   </dl>
 
   <div class="mic">
@@ -783,8 +783,10 @@ async function refresh() {
   els.occ.textContent = `${Math.round((s.stats.occupancy_pct / 100) * s.rooms.length)}/${s.rooms.length}`;
   if (s.now) els.clock.textContent = s.now;
   els.oos.textContent = s.stats.out_of_service;
+  els.oos.parentElement.classList.toggle("warn", s.stats.out_of_service > 0);
   els.tasks.textContent = s.stats.open_tasks;
   els.comp.textContent = money(s.stats.comp_total_inr);
+  els.comp.parentElement.classList.toggle("signal", s.stats.comp_total_inr > 0);
 
   const m = s.metrics || {};
   els.mClose.textContent = m.median_close_min == null ? "no closures yet" : m.median_close_min + " min";
