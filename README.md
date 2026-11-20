@@ -1,14 +1,14 @@
 ﻿# PropertyOps
 
 A voice copilot for hotel front desks. The duty manager speaks; the agent looks up the
-guest, applies policy, moves rooms, raises work orders and records compensation â€” and
+guest, applies policy, moves rooms, raises work orders and records compensation — and
 every action lands on a live board and in an audit trail.
 
-Built for **Build with Agora Â· Bengaluru** â€” Track 2 (`ps31`), *Voice AI at Work: Beyond
+Built for **Build with Agora · Bengaluru** — Track 2 (`ps31`), *Voice AI at Work: Beyond
 the Call Center*.
 
 **Live:** https://propertyops-lemd.onrender.com
-*(Free tier â€” the first request can take up to a minute while it wakes.)*
+*(Free tier — the first request can take up to a minute while it wakes.)*
 
 ---
 
@@ -19,7 +19,7 @@ rattling. The manager says:
 
 > "Room 408 has a broken air conditioner and Mr Rao has been waiting an hour."
 
-The agent looks up the guest (Gold tier, â‚¹6,500), checks availability (nothing free on
+The agent looks up the guest (Gold tier, ₹6,500), checks availability (nothing free on
 floor 4), offers 604, applies the compensation ceiling, executes the move, raises a
 maintenance task with an SLA clock, and schedules its own follow-up. The room board
 changes while it is still speaking.
@@ -29,9 +29,9 @@ Three things make it more than a chatbot with function calls:
 1. **Policy is enforced server-side, not by the prompt.** The model decides *what* to do;
    the server decides whether it is allowed. A duty manager cannot approve what a General
    Manager must.
-2. **Every write is attributable.** Append-only audit, named approvers, no deletion â€” a
+2. **Every write is attributable.** Append-only audit, named approvers, no deletion — a
    reversed charge stays on the bill, marked reversed, with a reason.
-3. **Failures return a next step.** Unavailable, conflicting, refused â€” each response
+3. **Failures return a next step.** Unavailable, conflicting, refused — each response
    carries the alternative, so the agent recovers in one turn instead of apologising.
 
 The setting is a shift, not an hour. The same five workflows run at 3pm and 3am; the
@@ -44,15 +44,15 @@ starts at sunset.
 
 ```
 Browser (mic + console)
-      â”‚  WebRTC audio
-      â–¼
-Agora Conversational AI Engine  â”€â”€  ASR (Deepgram) â”€â”€ LLM (tool calling) â”€â”€ Murf Falcon TTS
-      â”‚                                    â”‚
-      â”‚  HTTPS tool calls                  â”‚
-      â–¼                                    â–¼
-FastAPI  â”€â”€ 20 tools â”€â”€ policy engine â”€â”€ audit writer â”€â”€ SQLite
-      â”‚
-      â””â”€â”€  /api/state, /api/room/{no}, /api/observability, /api/text, /api/speak  â†’  console
+      │  WebRTC audio
+      ▼
+Agora Conversational AI Engine  ──  ASR (Deepgram) ── LLM (tool calling) ── Murf Falcon TTS
+      │                                    │
+      │  HTTPS tool calls                  │
+      ▼                                    ▼
+FastAPI  ── 20 tools ── policy engine ── audit writer ── SQLite
+      │
+      └──  /api/state, /api/room/{no}, /api/observability, /api/text, /api/speak  →  console
 ```
 
 The agent runs in Agora's cloud, so tool endpoints must be publicly reachable over HTTPS.
@@ -65,8 +65,8 @@ self-configuring; locally it comes from `TOOLS_BASE_URL`.
 
 | # | Workflow | What it demonstrates |
 |---|---|---|
-| W1 | Room defect â†’ move â†’ comp | Availability search, recovery when the floor is full, compensation ceiling, approval |
-| W2 | Late checkout vs next arrival | Conflict detection â€” a promise capped at the arriving guest's ETA |
+| W1 | Room defect → move → comp | Availability search, recovery when the floor is full, compensation ceiling, approval |
+| W2 | Late checkout vs next arrival | Conflict detection — a promise capped at the arriving guest's ETA |
 | W3 | Walk a guest | Partner hotel, transport, and a General Manager-only authorisation |
 | W4 | Billing dispute | Reading the actual folio, reversing a wrong line, refusing approval below the amount |
 | W5 | Shift handover | Memory of the shift: moves, comps and approvers, tasks at risk, follow-ups |
@@ -94,12 +94,12 @@ The rule that earns its keep:
 
 | Code | Condition | Ceiling |
 |---|---|---|
-| `COMP-GOLD` | Gold tier | â‚¹1,500 |
-| `COMP-LATE-GOLD` | Gold tier, after 22:00 | â‚¹2,500 |
-| `COMP-ESCALATE` | above â‚¹5,000 | â†’ General Manager |
-| `REVERSAL-SMALL` | any charge | â‚¹1,500 |
+| `COMP-GOLD` | Gold tier | ₹1,500 |
+| `COMP-LATE-GOLD` | Gold tier, after 22:00 | ₹2,500 |
+| `COMP-ESCALATE` | above ₹5,000 | → General Manager |
+| `REVERSAL-SMALL` | any charge | ₹1,500 |
 
-The same â‚¹2,500 comp is allowed at 23:40 and requires approval at 18:00. That's the
+The same ₹2,500 comp is allowed at 23:40 and requires approval at 18:00. That's the
 engine reading context rather than a constant.
 
 **Authority is an override ceiling, not a bypass.** A staff member's `authority_inr` says
@@ -117,22 +117,22 @@ owns approval.
 
 | Role | Person | Department | Can approve |
 |---|---|---|---|
-| General manager | Arun Sharma | â€” | â‚¹25,000 |
-| Duty manager | Ravi Menon | front desk | â‚¹5,000 |
-| Front desk | Kiran Pillai | front desk | â‚¹750 |
-| Maintenance lead | Suresh Kumar | maintenance | â€” |
-| Housekeeping lead | Meena Das | housekeeping | â€” |
-| Security lead | Rahul Fernandes | security | â€” |
+| General manager | Arun | — | ₹25,000 |
+| Duty manager | Ravi | front desk | ₹5,000 |
+| Front desk | Kiran | front desk | ₹750 |
+| Maintenance lead | Suresh | maintenance | — |
+| Housekeeping lead | Meena | housekeeping | — |
+| Security lead | Rahul | security | — |
 
 `getRoster` answers from this table: who leads a department, who is on duty, and who can
 approve a given amount. The agent is instructed never to invent a colleague's name. The
-leads carry zero authority on purpose â€” they own work, they do not authorise spend.
+leads carry zero authority on purpose — they own work, they do not authorise spend.
 
 ---
 
 ## Tools
 
-Twenty-two, all returning the same envelope â€” `{ok, status, message, data, hints}` â€”
+Twenty-two, all returning the same envelope — `{ok, status, message, data, hints}` —
 where `message` is written for speech and `data` for the model and console.
 
 | Group | Tools |
@@ -151,7 +151,7 @@ placeholder and a missing argument fails before reaching the server. Optional co
 sentinels: `""` for "not provided", `0` for "no limit".
 
 `APPROVAL_REQUIRED`, `UNAVAILABLE`, `CONFLICT` and `ESCALATE` are **not** counted as
-failures â€” they're the system working. Only `ERROR` and `NOT_FOUND` are.
+failures — they're the system working. Only `ERROR` and `NOT_FOUND` are.
 
 ---
 
@@ -160,19 +160,19 @@ failures â€” they're the system working. Only `ERROR` and `NOT_FOUND` are.
 One page, no build step, designed for a projector: the room rack is the hero, everything
 else is a quiet rail.
 
-- **Room rack** â€” floors 8â†’4, status colour only, click for a detail drawer (guest,
+- **Room rack** — floors 8→4, status colour only, click for a detail drawer (guest,
   folio, tasks, moves, activity, housekeeping).
-- **Needs you** â€” the approval card, with the amount, the ceiling, the rule code, and
+- **Needs you** — the approval card, with the amount, the ceiling, the rule code, and
   Approve / Decline. Voice and click write the same record.
-- **Department tasks** â€” SLA bars that turn amber, then red.
-- **Shift ledger** â€” every action with its actor.
-- **Metrics** â€” median time to close a task, comps applied vs blocked by policy, SLA
+- **Department tasks** — SLA bars that turn amber, then red.
+- **Shift ledger** — every action with its actor.
+- **Metrics** — median time to close a task, comps applied vs blocked by policy, SLA
   compliance, tool p95 and problem count.
-- **SLA band** â€” appears when work is at risk, chimes once per new alert, and the agent
+- **SLA band** — appears when work is at risk, chimes once per new alert, and the agent
   announces it aloud if a session is live.
-- **Text input** â€” type an instruction when speaking is not an option; it reaches the
+- **Text input** — type an instruction when speaking is not an option; it reaches the
   agent as user input.
-- **Tool failures** â€” only rendered when there are any.
+- **Tool failures** — only rendered when there are any.
 
 ---
 
@@ -181,7 +181,7 @@ else is a quiet rail.
 Two Agora REST capabilities that most voice demos skip, both wired up here:
 
 - **Typed input.** If the mic or ASR fails, type instead. `POST /api/text` forwards to
-  `agent_think`, which injects the text as user input â€” the agent answers exactly as if
+  `agent_think`, which injects the text as user input — the agent answers exactly as if
   you had spoken it. The input box unlocks on Connect.
 - **Server-initiated speech.** `POST /api/speak` broadcasts through TTS with
   `INTERRUPT | APPEND | IGNORE` priority. The SLA alert loop uses it: when a task crosses
@@ -225,7 +225,7 @@ Speech-to-text and the LLM are Agora-managed, so Murf is the only third-party ke
 ## Deployment
 
 `render.yaml` defines a free Python web service in Singapore with a `/health` check. Create
-a Blueprint from the repo and supply the three secrets â€” they are deliberately not in the
+a Blueprint from the repo and supply the three secrets — they are deliberately not in the
 file.
 
 SQLite is ephemeral and the app seeds itself on an empty database, so every deploy returns
@@ -281,5 +281,5 @@ scripts/spec_tests.py
 
 ## Credits
 
-Agora Conversational AI Engine and RTC Â· Murf Falcon TTS Â· Deepgram (managed ASR) Â·
+Agora Conversational AI Engine and RTC · Murf Falcon TTS · Deepgram (managed ASR) ·
 OpenAI (managed LLM). Built with FastAPI and SQLite.

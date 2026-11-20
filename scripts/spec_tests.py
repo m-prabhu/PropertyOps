@@ -62,13 +62,13 @@ def main() -> None:
 
     d = policy.evaluate("comp", {"tier": "gold", "amount_inr": 3000,
                                  "local_time": datetime(2026, 11, 20, 15, 0),
-                                 "approved_by": "Ravi Menon"})
+                                 "approved_by": "Ravi"})
     check("gold 3000 approved by duty manager -> ALLOW_APPROVED",
           d["decision"] == "ALLOW_APPROVED" and d["approved_role"] == "duty_manager", d)
 
     d = policy.evaluate("comp", {"tier": "gold", "amount_inr": 3000,
                                  "local_time": datetime(2026, 11, 20, 15, 0),
-                                 "approved_by": "Kiran Pillai"})
+                                 "approved_by": "Kiran"})
     check("gold 3000 approved by front desk -> still REQUIRE_APPROVAL",
           d["decision"] == "REQUIRE_APPROVAL", d)
 
@@ -118,11 +118,11 @@ def main() -> None:
           and blocked["data"]["limit_inr"] in (1500, 2500), blocked)
 
     approved = tools.applyComp("G-1001", 3000, "room defect and 60 minute wait",
-                                approved_by="Ravi Menon", request_id="comp-1")
+                                approved_by="Ravi", request_id="comp-1")
     check("approved by duty manager -> DONE with approver recorded",
-          approved["ok"] and approved["data"]["approved_by"] == "Ravi Menon", approved)
+          approved["ok"] and approved["data"]["approved_by"] == "Ravi", approved)
 
-    dup = tools.applyComp("G-1001", 3000, "retry", approved_by="Ravi Menon", request_id="comp-1")
+    dup = tools.applyComp("G-1001", 3000, "retry", approved_by="Ravi", request_id="comp-1")
     check("comp is idempotent on request_id", dup["ok"], dup)
 
     # --- approval closure ---------------------------------------------
@@ -145,12 +145,12 @@ def main() -> None:
 
     tools.applyComp("G-1001", 4000, "request the manager will reduce")
     reduced = tools.applyComp("G-1001", 2500, "manager authorised 2500 only",
-                              approved_by="Ravi Menon")
+                              approved_by="Ravi")
     check("approving a LOWER amount also closes the original request",
           reduced["ok"] and pending_count() == 0, reduced)
 
     within = tools.applyComp("G-1001", 500, "small goodwill, well inside the ceiling",
-                             approved_by="Ravi Menon")
+                             approved_by="Ravi")
     check("an in-policy comp records NO approver, even if one is passed",
           within["ok"] and not within["data"].get("approved_by"), within)
 
@@ -209,14 +209,14 @@ def main() -> None:
           blocked["status"] == "APPROVAL_REQUIRED"
           and blocked["data"]["required_role"] == "gm", blocked)
 
-    wrong = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Ravi Menon")
+    wrong = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Ravi")
     check("a duty manager cannot authorise a walk",
           wrong["status"] == "APPROVAL_REQUIRED", wrong)
 
-    done = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Arun Sharma")
+    done = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Arun")
     check("GM approval completes the walk", done["ok"], done)
 
-    twice = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Arun Sharma")
+    twice = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Arun")
     check("the same guest cannot be walked twice",
           twice["status"] == "CONFLICT", twice)
 
@@ -244,13 +244,13 @@ def main() -> None:
     check("a large reversal -> APPROVAL_REQUIRED",
           big["status"] == "APPROVAL_REQUIRED" and big["data"]["required_role"], big)
 
-    weak = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "Ravi Menon")
+    weak = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "Ravi")
     check("approval below the amount is refused",
           weak["status"] == "APPROVAL_REQUIRED", weak)
 
-    done = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "Arun Sharma")
+    done = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "Arun")
     check("GM approval completes the reversal",
-          done["ok"] and done["data"]["approved_by"] == "Arun Sharma", done)
+          done["ok"] and done["data"]["approved_by"] == "Arun", done)
 
     after = tools.getFolio("G-1001")
     check("reversed lines leave the balance",
@@ -336,14 +336,14 @@ def main() -> None:
 
     maintenance = tools.getRoster("maintenance", 0)
     check("a department query finds its lead",
-          maintenance["ok"] and maintenance["data"]["people"][0]["name"] == "Suresh Kumar",
+          maintenance["ok"] and maintenance["data"]["people"][0]["name"] == "Suresh",
           maintenance)
 
     approvers = tools.getRoster("", 4000)
     names = [p["name"] for p in approvers["data"]["people"]] if approvers["ok"] else []
     check("an authority filter returns only people who can approve it",
-          approvers["ok"] and "Arun Sharma" in names and "Ravi Menon" in names
-          and "Suresh Kumar" not in names, approvers)
+          approvers["ok"] and "Arun" in names and "Ravi" in names
+          and "Suresh" not in names, approvers)
 
     missing = tools.getRoster("nobody", 0)
     check("an unknown name returns NOT_FOUND", missing["status"] == "NOT_FOUND", missing)
