@@ -322,6 +322,27 @@ def main() -> None:
         check("think refuses without a live session", True)
     ag.service.current_agent_id = saved_agent
 
+    # --- roster -------------------------------------------------------
+    section("roster")
+
+    everyone = tools.getRoster("", 0)
+    check("the roster lists all six people",
+          everyone["ok"] and everyone["data"]["count"] == 6, everyone)
+
+    maintenance = tools.getRoster("maintenance", 0)
+    check("a department query finds its lead",
+          maintenance["ok"] and maintenance["data"]["people"][0]["name"] == "S. Kumar",
+          maintenance)
+
+    approvers = tools.getRoster("", 4000)
+    names = [p["name"] for p in approvers["data"]["people"]] if approvers["ok"] else []
+    check("an authority filter returns only people who can approve it",
+          approvers["ok"] and "A. Sharma" in names and "R. Menon" in names
+          and "S. Kumar" not in names, approvers)
+
+    missing = tools.getRoster("nobody", 0)
+    check("an unknown name returns NOT_FOUND", missing["status"] == "NOT_FOUND", missing)
+
     # --- seed coherence -----------------------------------------------
     section("seed coherence")
 

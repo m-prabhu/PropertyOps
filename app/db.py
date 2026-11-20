@@ -16,7 +16,22 @@ from .clock import now as clock_now
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "propertyops.db"
 
+# Bump when the schema changes. Existing databases are dropped and reseeded
+# rather than migrated, because this app only ever holds demo state.
+SCHEMA_VERSION = "3"
+
+ALL_TABLES = (
+    "meta", "property", "rooms", "guests", "reservations", "folio_charges", "tasks",
+    "comps", "moves", "followups", "policy_rules", "staff", "policy_chunks", "audit",
+    "approvals", "partner_hotels", "transport_requests", "walks", "sla_alerts",
+)
+
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS property (
   id         INTEGER PRIMARY KEY CHECK (id = 1),
   name       TEXT NOT NULL,
@@ -131,8 +146,12 @@ CREATE TABLE IF NOT EXISTS policy_rules (
 CREATE TABLE IF NOT EXISTS staff (
   staff_id      TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
-  role          TEXT NOT NULL CHECK (role IN ('front_desk','duty_manager','gm')),
+  role          TEXT NOT NULL CHECK (role IN ('front_desk','duty_manager','gm',
+                                              'maintenance_lead','housekeeping_lead','security_lead')),
+  department    TEXT,
   authority_inr INTEGER NOT NULL,
+  phone         TEXT,
+  on_duty       INTEGER NOT NULL DEFAULT 1,
   active        INTEGER NOT NULL DEFAULT 1
 );
 
@@ -223,9 +242,13 @@ FEATURES = {
 VACANT_ROOMS = {"604", "702", "803"}
 
 STAFF = [
-    ("S-01", "R. Menon", "duty_manager", 5000),
-    ("S-02", "A. Sharma", "gm", 25000),
-    ("S-03", "K. Pillai", "front_desk", 750),
+    # staff_id, name, role, department, authority_inr, phone
+    ("S-01", "R. Menon", "duty_manager", "front_desk", 5000, "+91 98450 11001"),
+    ("S-02", "A. Sharma", "gm", None, 25000, "+91 98450 11002"),
+    ("S-03", "K. Pillai", "front_desk", "front_desk", 750, "+91 98450 11003"),
+    ("S-04", "S. Kumar", "maintenance_lead", "maintenance", 0, "+91 98450 11004"),
+    ("S-05", "M. Das", "housekeeping_lead", "housekeeping", 0, "+91 98450 11005"),
+    ("S-06", "R. Fernandes", "security_lead", "security", 0, "+91 98450 11006"),
 ]
 
 GUESTS = [
@@ -349,7 +372,8 @@ def seed(conn: sqlite3.Connection) -> None:
         GUESTS,
     )
     conn.executemany(
-        "INSERT INTO staff (staff_id, name, role, authority_inr) VALUES (?,?,?,?)", STAFF
+        "INSERT INTO staff (staff_id, name, role, department, authority_inr, phone) "
+        "VALUES (?,?,?,?,?,?)", STAFF
     )
 
     today = date.today()
@@ -473,9 +497,18 @@ def init(reset: bool = False) -> None:
     conn = connect()
     try:
         conn.executescript(SCHEMA)
+        version = conn.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
         empty = conn.execute("SELECT COUNT(*) AS c FROM rooms").fetchone()["c"] == 0
-        if reset or empty:
+
+        if reset or empty or version is None or version["value"] != SCHEMA_VERSION:
+            for table in ALL_TABLES:
+                conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.executescript(SCHEMA)
             seed(conn)
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)",
+                (SCHEMA_VERSION,))
         conn.commit()
     finally:
         conn.close()

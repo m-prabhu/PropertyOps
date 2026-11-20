@@ -20,6 +20,21 @@
     {
       "type": "function",
       "function": {
+        "name": "getRoster",
+        "description": "Who does what on the property. Search by name, role or department, and optionally filter to people who can approve a given amount. Use this for questions like 'who handles maintenance', 'who is on duty', or 'who can approve 4000 rupees'. Pass an empty query and 0 to list everyone.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Name, role or department fragment, or an empty string for the whole roster." },
+            "min_authority_inr": { "type": "integer", "description": "Only people who can approve at least this many rupees. Use 0 for no filter." }
+          },
+          "required": ["query", "min_authority_inr"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "getRoom",
         "description": "Read one room's status, housekeeping state, category, nightly rate and current guest. Use for a quick status check when you already know the room number.",
         "parameters": {

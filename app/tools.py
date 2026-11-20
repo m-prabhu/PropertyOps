@@ -881,9 +881,73 @@ def at_risk_tasks(threshold_minutes: int = 15) -> list[dict]:
     return flagged
 
 
+ROLE_LABEL = {
+    "front_desk": "front desk",
+    "duty_manager": "duty manager",
+    "gm": "general manager",
+    "maintenance_lead": "maintenance lead",
+    "housekeeping_lead": "housekeeping lead",
+    "security_lead": "security lead",
+}
+
+
+def _join_names(names: list[str]) -> str:
+    if not names:
+        return ""
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def getRoster(query: str = "", min_authority_inr: int = 0) -> dict:
+    """Who does what: role, department, approval authority, and whether they are on duty."""
+    needle = str(query or "").strip().lower()
+    try:
+        minimum = int(min_authority_inr or 0)
+    except (TypeError, ValueError):
+        minimum = 0
+
+    with db() as conn:
+        rows = _rows(conn.execute(
+            "SELECT name, role, department, authority_inr, phone, on_duty "
+            "FROM staff WHERE active = 1 ORDER BY authority_inr DESC, name"))
+
+    people = []
+    for row in rows:
+        haystack = " ".join(
+            str(row[k] or "") for k in ("name", "role", "department")).lower()
+        if needle and needle not in haystack:
+            continue
+        if minimum and row["authority_inr"] < minimum:
+            continue
+        people.append({**row, "on_duty": bool(row["on_duty"])})
+
+    if not people:
+        return fail("NOT_FOUND", f"Nobody on the roster matches '{query}'.",
+                    {"roster_size": len(rows)})
+
+    if minimum:
+        names = [p["name"] for p in people[:4]]
+        message = f"{_join_names(names)} can approve {minimum} rupees."
+    elif len(people) == 1:
+        person = people[0]
+        message = (f"{person['name']} is the "
+                   f"{ROLE_LABEL.get(person['role'], person['role'])}, "
+                   f"{'on duty' if person['on_duty'] else 'off duty'}"
+                   + (f", on {person['phone']}" if person["phone"] else "") + ".")
+    else:
+        message = (f"{len(people)} people: "
+                   f"{_join_names([p['name'] for p in people])}.")
+
+    return ok(message, {"people": people, "count": len(people)})
+
+
 REGISTRY = {
     "getShiftSummary": getShiftSummary,
     "getAvailabilitySummary": getAvailabilitySummary,
+    "getRoster": getRoster,
     "getRoom": getRoom,
     "findAvailableRooms": findAvailableRooms,
     "setRoomStatus": setRoomStatus,
