@@ -239,6 +239,7 @@ to a known demo state. `POST /api/reset` does the same on demand.
 .venv/Scripts/python -m scripts.spec_tests        # 68 checks, logic, no network
 .venv/Scripts/python -m scripts.contract_tests    # HTTP contract, localhost
 .venv/Scripts/python -m scripts.contract_tests https://propertyops-lemd.onrender.com
+.venv/Scripts/python -m scripts.convo_probe https://propertyops-lemd.onrender.com
 ```
 
 **`spec_tests`** — 68 checks against real SQLite: every policy branch (including the same
@@ -253,6 +254,13 @@ comp, bad date, unknown partner). Also asserts that nothing ever returns a 5xx.
 
 Run the contract suite against the deployed URL before a demo — it is the only check that
 sees the real environment, and it resets the property when it finishes.
+
+**`convo_probe`** — the layer the other two cannot reach: what the *agent chooses*. It opens
+a fresh session per scenario, injects the utterance through `/api/text`, and asserts on the
+tool calls and resulting state rather than the wording of the reply. Thirteen checks over
+six scenarios, including "a room number that does not exist must not cause a retry storm"
+and "close the task the manager described, not a nearby one". This costs real Agora
+sessions, so run it before a demo, not on every edit.
 
 They run against a real SQLite database, not mocks.
 
