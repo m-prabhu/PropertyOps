@@ -815,7 +815,7 @@ document.addEventListener("click", async (e) => {
     await fetch(`/api/approvals/${id}/${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ by: "R. Menon" }),
+      body: JSON.stringify({ by: "Ravi Menon" }),
     });
   } finally {
     refresh();

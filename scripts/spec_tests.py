@@ -1,4 +1,4 @@
-"""Phase P1 acceptance tests.
+﻿"""Phase P1 acceptance tests.
 
     .venv\\Scripts\\python.exe -m scripts.spec_tests
 
@@ -62,13 +62,13 @@ def main() -> None:
 
     d = policy.evaluate("comp", {"tier": "gold", "amount_inr": 3000,
                                  "local_time": datetime(2026, 11, 20, 15, 0),
-                                 "approved_by": "R. Menon"})
+                                 "approved_by": "Ravi Menon"})
     check("gold 3000 approved by duty manager -> ALLOW_APPROVED",
           d["decision"] == "ALLOW_APPROVED" and d["approved_role"] == "duty_manager", d)
 
     d = policy.evaluate("comp", {"tier": "gold", "amount_inr": 3000,
                                  "local_time": datetime(2026, 11, 20, 15, 0),
-                                 "approved_by": "K. Pillai"})
+                                 "approved_by": "Kiran Pillai"})
     check("gold 3000 approved by front desk -> still REQUIRE_APPROVAL",
           d["decision"] == "REQUIRE_APPROVAL", d)
 
@@ -104,6 +104,11 @@ def main() -> None:
           + len(summary["data"]["out_of_service"]) == summary["data"]["total_rooms"],
           summary)
 
+    room605 = tools.getRoom("605")
+    check("a room reports its open task in the spoken message",
+          room605["ok"] and "shower drain" in room605["message"].lower()
+          and room605["data"]["tasks"], room605)
+
     again = tools.moveRoom("G-1001", "408", "604", "retry", request_id="mv-1")
     check("move is idempotent on request_id", again["ok"], again)
 
@@ -113,11 +118,11 @@ def main() -> None:
           and blocked["data"]["limit_inr"] in (1500, 2500), blocked)
 
     approved = tools.applyComp("G-1001", 3000, "room defect and 60 minute wait",
-                                approved_by="R. Menon", request_id="comp-1")
+                                approved_by="Ravi Menon", request_id="comp-1")
     check("approved by duty manager -> DONE with approver recorded",
-          approved["ok"] and approved["data"]["approved_by"] == "R. Menon", approved)
+          approved["ok"] and approved["data"]["approved_by"] == "Ravi Menon", approved)
 
-    dup = tools.applyComp("G-1001", 3000, "retry", approved_by="R. Menon", request_id="comp-1")
+    dup = tools.applyComp("G-1001", 3000, "retry", approved_by="Ravi Menon", request_id="comp-1")
     check("comp is idempotent on request_id", dup["ok"], dup)
 
     # --- approval closure ---------------------------------------------
@@ -140,12 +145,12 @@ def main() -> None:
 
     tools.applyComp("G-1001", 4000, "request the manager will reduce")
     reduced = tools.applyComp("G-1001", 2500, "manager authorised 2500 only",
-                              approved_by="R. Menon")
+                              approved_by="Ravi Menon")
     check("approving a LOWER amount also closes the original request",
           reduced["ok"] and pending_count() == 0, reduced)
 
     within = tools.applyComp("G-1001", 500, "small goodwill, well inside the ceiling",
-                             approved_by="R. Menon")
+                             approved_by="Ravi Menon")
     check("an in-policy comp records NO approver, even if one is passed",
           within["ok"] and not within["data"].get("approved_by"), within)
 
@@ -204,14 +209,14 @@ def main() -> None:
           blocked["status"] == "APPROVAL_REQUIRED"
           and blocked["data"]["required_role"] == "gm", blocked)
 
-    wrong = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "R. Menon")
+    wrong = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Ravi Menon")
     check("a duty manager cannot authorise a walk",
           wrong["status"] == "APPROVAL_REQUIRED", wrong)
 
-    done = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "A. Sharma")
+    done = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Arun Sharma")
     check("GM approval completes the walk", done["ok"], done)
 
-    twice = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "A. Sharma")
+    twice = tools.walkGuest("G-2003", "P-01", tid, "hotel oversold", "Arun Sharma")
     check("the same guest cannot be walked twice",
           twice["status"] == "CONFLICT", twice)
 
@@ -239,13 +244,13 @@ def main() -> None:
     check("a large reversal -> APPROVAL_REQUIRED",
           big["status"] == "APPROVAL_REQUIRED" and big["data"]["required_role"], big)
 
-    weak = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "R. Menon")
+    weak = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "Ravi Menon")
     check("approval below the amount is refused",
           weak["status"] == "APPROVAL_REQUIRED", weak)
 
-    done = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "A. Sharma")
+    done = tools.reverseCharge(room_charge["charge_id"], "rate was quoted lower", "Arun Sharma")
     check("GM approval completes the reversal",
-          done["ok"] and done["data"]["approved_by"] == "A. Sharma", done)
+          done["ok"] and done["data"]["approved_by"] == "Arun Sharma", done)
 
     after = tools.getFolio("G-1001")
     check("reversed lines leave the balance",
@@ -331,14 +336,14 @@ def main() -> None:
 
     maintenance = tools.getRoster("maintenance", 0)
     check("a department query finds its lead",
-          maintenance["ok"] and maintenance["data"]["people"][0]["name"] == "S. Kumar",
+          maintenance["ok"] and maintenance["data"]["people"][0]["name"] == "Suresh Kumar",
           maintenance)
 
     approvers = tools.getRoster("", 4000)
     names = [p["name"] for p in approvers["data"]["people"]] if approvers["ok"] else []
     check("an authority filter returns only people who can approve it",
-          approvers["ok"] and "A. Sharma" in names and "R. Menon" in names
-          and "S. Kumar" not in names, approvers)
+          approvers["ok"] and "Arun Sharma" in names and "Ravi Menon" in names
+          and "Suresh Kumar" not in names, approvers)
 
     missing = tools.getRoster("nobody", 0)
     check("an unknown name returns NOT_FOUND", missing["status"] == "NOT_FOUND", missing)

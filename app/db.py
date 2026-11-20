@@ -1,6 +1,6 @@
-"""Schema + seed for PropertyOps.
+﻿"""Schema + seed for PropertyOps.
 
-Target schema is defined in docs/SPEC.md §2. We control the seed and have no
+Target schema is defined in docs/SPEC.md Â§2. We control the seed and have no
 production data, so this replaces the earlier schema outright: POST /api/reset
 re-seeds a known world.
 """
@@ -243,12 +243,12 @@ VACANT_ROOMS = {"604", "702", "803"}
 
 STAFF = [
     # staff_id, name, role, department, authority_inr, phone
-    ("S-01", "R. Menon", "duty_manager", "front_desk", 5000, "+91 98450 11001"),
-    ("S-02", "A. Sharma", "gm", None, 25000, "+91 98450 11002"),
-    ("S-03", "K. Pillai", "front_desk", "front_desk", 750, "+91 98450 11003"),
-    ("S-04", "S. Kumar", "maintenance_lead", "maintenance", 0, "+91 98450 11004"),
-    ("S-05", "M. Das", "housekeeping_lead", "housekeeping", 0, "+91 98450 11005"),
-    ("S-06", "R. Fernandes", "security_lead", "security", 0, "+91 98450 11006"),
+    ("S-01", "Ravi Menon", "duty_manager", "front_desk", 5000, "+91 98450 11001"),
+    ("S-02", "Arun Sharma", "gm", None, 25000, "+91 98450 11002"),
+    ("S-03", "Kiran Pillai", "front_desk", "front_desk", 750, "+91 98450 11003"),
+    ("S-04", "Suresh Kumar", "maintenance_lead", "maintenance", 0, "+91 98450 11004"),
+    ("S-05", "Meena Das", "housekeeping_lead", "housekeeping", 0, "+91 98450 11005"),
+    ("S-06", "Rahul Fernandes", "security_lead", "security", 0, "+91 98450 11006"),
 ]
 
 GUESTS = [
@@ -464,10 +464,10 @@ def seed(conn: sqlite3.Connection) -> None:
         "INSERT INTO tasks (created_at, department, location, priority, description, sla_due, assignee) "
         "VALUES (?,?,?,?,?,?,?)",
         [
-            (now_iso(), "housekeeping", "Pool deck", "low", "Restock towels and sun loungers", iso_in(240), "M. Das"),
-            (now_iso(), "maintenance", "Lobby", "medium", "Replace lobby AC filter (scheduled)", iso_in(120), "S. Kumar"),
+            (now_iso(), "housekeeping", "Pool deck", "low", "Restock towels and sun loungers", iso_in(240), "Meena Das"),
+            (now_iso(), "maintenance", "Lobby", "medium", "Replace lobby AC filter (scheduled)", iso_in(120), "Suresh Kumar"),
             # Already close to breaching, so the shift opens with a live alert.
-            (iso_in(-25), "maintenance", "605", "high", "Guest reports shower drain blocked", iso_in(5), "S. Kumar"),
+            (iso_in(-25), "maintenance", "605", "high", "Guest reports shower drain blocked", iso_in(5), "Suresh Kumar"),
         ],
     )
 

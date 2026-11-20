@@ -1,7 +1,7 @@
-# PropertyOps — Technical Spec (v1, P0)
+﻿# PropertyOps â€” Technical Spec (v1, P0)
 
-**Product:** PropertyOps — Voice AI Ops Copilot for Hotel Front Desks
-**Track:** Build with Agora BLR · **Track 2 / `ps31`** — Voice AI at Work: Beyond the Call Center
+**Product:** PropertyOps â€” Voice AI Ops Copilot for Hotel Front Desks
+**Track:** Build with Agora BLR Â· **Track 2 / `ps31`** â€” Voice AI at Work: Beyond the Call Center
 **Status:** Draft for approval. No implementation starts until this is signed off.
 **Date:** 2026-11-19
 
@@ -14,7 +14,7 @@ One property, one role (duty manager), voice-first, mock PMS. "Complete" means
 
 | Tier | Contents | Ship by |
 |---|---|---|
-| **P0** | 20 tools · W1–W5 · policy engine · console · audit · reset | 21 Nov, 12:45 IST |
+| **P0** | 20 tools Â· W1â€“W5 Â· policy engine Â· console Â· audit Â· reset | 21 Nov, 12:45 IST |
 | **P1** | guest notify, MCP wrapper | only if on schedule |
 | **P2** | Real PMS integration, payments, multi-property, RBAC, housekeeping app, forecasting, full i18n | roadmap slide only |
 
@@ -27,17 +27,17 @@ multi-tenant, no IoT. These are named on the roadmap slide, not faked in the bui
 
 ```
  Browser (mic + console)
-        │  WebRTC audio
-        ▼
- Agora Conversational AI Engine ── ASR ── LLM (tool calling) ── Murf Falcon TTS
-        │                              │
-        │  HTTPS tool calls            │ transcript events
-        ▼                              ▼
- FastAPI  ──────────────┬───────────  Console API (/api/state)
-   tools/               │
-   policy engine        │
-   audit writer         │
-        ▼               ▼
+        â”‚  WebRTC audio
+        â–¼
+ Agora Conversational AI Engine â”€â”€ ASR â”€â”€ LLM (tool calling) â”€â”€ Murf Falcon TTS
+        â”‚                              â”‚
+        â”‚  HTTPS tool calls            â”‚ transcript events
+        â–¼                              â–¼
+ FastAPI  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€  Console API (/api/state)
+   tools/               â”‚
+   policy engine        â”‚
+   audit writer         â”‚
+        â–¼               â–¼
                SQLite (single file)
 ```
 
@@ -135,11 +135,11 @@ _Indexes:_ `reservations(room_no, status)`, `tasks(status, sla_due)`,
 |---|---|---|
 | Occupancy | 92.5% (37/40) | Scarcity forces real trade-offs |
 | Vacant | 604, 702, 803 | 604 = same-category fallback; 702/803 = upgrade pressure |
-| Floor 4 | full except the incident room | Makes "same floor" impossible → recovery |
-| Incident room | 408, Mr. Arjun Rao, Gold, ₹6,500 | Tier drives the comp ceiling |
+| Floor 4 | full except the incident room | Makes "same floor" impossible â†’ recovery |
+| Incident room | 408, Mr. Arjun Rao, Gold, â‚¹6,500 | Tier drives the comp ceiling |
 | Next arrival on 508 | today, ETA 14:00, deluxe | Makes W2 a genuine conflict |
 | Dormant accounts | 1 platinum, 2 silver | Lets tier behaviour be demonstrated |
-| Staff | 1 duty manager (₹5,000), 1 GM (₹25,000), 1 front desk (₹750) | Escalation is demonstrable |
+| Staff | 1 duty manager (â‚¹5,000), 1 GM (â‚¹25,000), 1 front desk (â‚¹750) | Escalation is demonstrable |
 
 ---
 
@@ -159,11 +159,11 @@ evaluate(topic, ctx) -> Decision
    `amount_gt` / `amount_lte` / `wait_gt` / `after_hour` for numerics).
 3. Order by `priority DESC`, then specificity (most conditions matched), then `id`.
 4. Outcome:
-   - rule has no ceiling and names an `escalate_to` → **ESCALATE**
-   - `amount_inr <= limit_inr` → **ALLOW**
+   - rule has no ceiling and names an `escalate_to` â†’ **ESCALATE**
+   - `amount_inr <= limit_inr` â†’ **ALLOW**
    - above the ceiling, `approved_by` names a staff member whose
-     `authority_inr >= amount_inr` → **ALLOW_APPROVED**
-   - above the ceiling, no valid approver → **REQUIRE_APPROVAL**
+     `authority_inr >= amount_inr` â†’ **ALLOW_APPROVED**
+   - above the ceiling, no valid approver â†’ **REQUIRE_APPROVAL**
 
 **Authority is an override ceiling, not a bypass.** `authority_inr` never raises the
 tier limit by itself; it only decides who may override it. This is why a front desk
@@ -171,9 +171,9 @@ agent cannot approve a Gold comp that the duty manager could.
 
 | Role | Authority |
 |---|---|
-| `front_desk` | ₹750 |
-| `duty_manager` | ₹5,000 |
-| `gm` | ₹25,000 |
+| `front_desk` | â‚¹750 |
+| `duty_manager` | â‚¹5,000 |
+| `gm` | â‚¹25,000 |
 
 ```python
 Decision = {
@@ -190,20 +190,20 @@ Decision = {
 
 | code | topic | condition | limit | escalate |
 |---|---|---|---|---|
-| `COMP-SILVER` | comp | tier=silver | 750 | — |
-| `COMP-GOLD` | comp | tier=gold | 1500 | — |
-| `COMP-PLAT` | comp | tier=platinum | 3000 | — |
-| `COMP-LATE-GOLD` | comp | tier=gold, after_hour=22 | 2500 | — |
-| `COMP-ESCALATE` | comp | amount_gt=5000 | — | GM |
-| `LC-WAIVE` | late_checkout | — | 0 | — |
-| `RATE-CHANGE` | rate_change | — | 0 | — |
-| `ESCALATE-PLAT` | escalation | tier=platinum | — | GM |
+| `COMP-SILVER` | comp | tier=silver | 750 | â€” |
+| `COMP-GOLD` | comp | tier=gold | 1500 | â€” |
+| `COMP-PLAT` | comp | tier=platinum | 3000 | â€” |
+| `COMP-LATE-GOLD` | comp | tier=gold, after_hour=22 | 2500 | â€” |
+| `COMP-ESCALATE` | comp | amount_gt=5000 | â€” | GM |
+| `LC-WAIVE` | late_checkout | â€” | 0 | â€” |
+| `RATE-CHANGE` | rate_change | â€” | 0 | â€” |
+| `ESCALATE-PLAT` | escalation | tier=platinum | â€” | GM |
 
-`COMP-LATE-GOLD` is the interesting one: the same ₹2,500 comp is allowed at 23:40
+`COMP-LATE-GOLD` is the interesting one: the same â‚¹2,500 comp is allowed at 23:40
 and requires approval at 18:00. It proves the engine reads context, not a constant.
 
 **Determinism requirement:** `evaluate()` is pure Python. No LLM call, no randomness,
-same input → same output. It is unit-testable and it is tested.
+same input â†’ same output. It is unit-testable and it is tested.
 
 ---
 
@@ -221,11 +221,11 @@ same input → same output. It is unit-testable and it is tested.
 }
 ```
 
-`status` ∈ `DONE · APPROVAL_REQUIRED · ESCALATE · UNAVAILABLE · CONFLICT · NOT_FOUND · ERROR`
+`status` âˆˆ `DONE Â· APPROVAL_REQUIRED Â· ESCALATE Â· UNAVAILABLE Â· CONFLICT Â· NOT_FOUND Â· ERROR`
 
 Rules:
 - `message` is written for **speech**, one or two sentences, no field names, no JSON.
-- `data` is for the console and the agent's reasoning — never read aloud verbatim.
+- `data` is for the console and the agent's reasoning â€” never read aloud verbatim.
 - Every failure must include a next step in `hints.next` or `data.available_now`.
 - Writes accept optional `request_id`; a repeat with the same id returns the
   original result instead of double-charging.
@@ -239,14 +239,14 @@ Rules:
 | 3 | `findAvailableRooms` | `category, floor?, features?` | `matches_on_floor`, `elsewhere`, `upgrades`, `occupancy_pct` |
 | 4 | `setRoomStatus` | `room_no, status, reason` | new status; refuses `vacant` while a defect task is open |
 | 5 | `getGuestContext` | `room_no` | guest, tier, rate, comps-to-date, authority, open tasks |
-| 6 | `searchGuest` | `query` | ≤5 matches by name/phone |
+| 6 | `searchGuest` | `query` | â‰¤5 matches by name/phone |
 | 7 | `getArrivals` | `room_no?, date` | expected arrivals with ETA and booked category |
-| 8 | `moveRoom` | `guest_id, from_room, to_room, reason, request_id?` | new room; old room → `out_of_service` |
+| 8 | `moveRoom` | `guest_id, from_room, to_room, reason, request_id?` | new room; old room â†’ `out_of_service` |
 | 9 | `extendStay` | `guest_id, new_departure, rate_inr?, request_id?` | updated departure; flags next-arrival conflict |
 | 10 | `applyComp` | `guest_id, amount_inr, reason, approved_by?, request_id?` | `APPROVAL_REQUIRED` or `DONE` + rule code |
 | 11 | `createDepartmentTask` | `department, location, priority, description` | task id + SLA due |
 | 12 | `updateTask` | `task_id, status, note?` | updated task |
-| 13 | `getPolicy` | `topic` | ≤2 prose sections (for quoting, not enforcing) |
+| 13 | `getPolicy` | `topic` | â‰¤2 prose sections (for quoting, not enforcing) |
 | 14 | `scheduleFollowup` | `room_no, minutes, note` | due_at |
 
 **P1 tools (deferred):** `get_folio`, `reverse_charge`, `notify_guest`,
@@ -259,7 +259,7 @@ Rules:
 | Target room not vacant | `UNAVAILABLE` | `data.available_now` |
 | Comp above ceiling | `APPROVAL_REQUIRED` | `limit_inr`, `requested_inr`, `required_role` |
 | Extension collides with arrival | `CONFLICT` | arrival ETA, `latest_possible_checkout` |
-| Room with open defect → vacant | `CONFLICT` | `open_task_ids` |
+| Room with open defect â†’ vacant | `CONFLICT` | `open_task_ids` |
 | Unknown room/guest | `NOT_FOUND` | closest matches |
 
 This table is a feature. It is what makes the agent recover instead of apologise.
@@ -268,46 +268,46 @@ This table is a feature. It is what makes the agent recover instead of apologise
 
 ## 5. Workflows
 
-### W1 — Room defect → move → comp  *(P0)*
+### W1 â€” Room defect â†’ move â†’ comp  *(P0)*
 
 ```
 trigger  "408's AC is rattling, guest waited an hour"
-  ├─ getGuestContext(408)            → Rao, gold, ₹6,500, ceiling ₹1,500
-  ├─ findAvailableRooms(deluxe, 4)   → 0 on floor 4 → 604 (f6), upgrades 702/803
-  ├─ getPolicy("comp limit gold")     → quotes ₹1,500
-  ├─ moveRoom(...→604)                → 408 out_of_service, 604 occupied
-  ├─ applyComp(2500)                  → APPROVAL_REQUIRED
-  │    └─ [voice] manager approves     → applyComp(..., approved_by="R. Menon")
-  ├─ createDepartmentTask(maintenance, 408, high, …)
-  └─ scheduleFollowup(408, 30, "confirm AC repaired")
+  â”œâ”€ getGuestContext(408)            â†’ Rao, gold, â‚¹6,500, ceiling â‚¹1,500
+  â”œâ”€ findAvailableRooms(deluxe, 4)   â†’ 0 on floor 4 â†’ 604 (f6), upgrades 702/803
+  â”œâ”€ getPolicy("comp limit gold")     â†’ quotes â‚¹1,500
+  â”œâ”€ moveRoom(...â†’604)                â†’ 408 out_of_service, 604 occupied
+  â”œâ”€ applyComp(2500)                  â†’ APPROVAL_REQUIRED
+  â”‚    â””â”€ [voice] manager approves     â†’ applyComp(..., approved_by="Ravi Menon")
+  â”œâ”€ createDepartmentTask(maintenance, 408, high, â€¦)
+  â””â”€ scheduleFollowup(408, 30, "confirm AC repaired")
 ```
-**Branch:** comp ≤ ceiling → no approval, straight through. **Branch:** amount > ₹5,000
-→ `ESCALATE` to GM, no comp recorded. **Branch:** room re-sold while talking → `UNAVAILABLE`,
+**Branch:** comp â‰¤ ceiling â†’ no approval, straight through. **Branch:** amount > â‚¹5,000
+â†’ `ESCALATE` to GM, no comp recorded. **Branch:** room re-sold while talking â†’ `UNAVAILABLE`,
 agent offers the next option without restarting the flow.
 
 **Written by:** agent. **Approved by:** staff. **Audited:** both, separately.
 
-### W2 — Late checkout vs next arrival  *(P0)*
+### W2 â€” Late checkout vs next arrival  *(P0)*
 
 ```
 trigger  "508 wants to keep the room till 4pm"
-  ├─ getGuestContext(508)
-  ├─ getArrivals(room_no=508, date=today)
-  │    ├─ no arrival that day → extendStay() → confirm
-  │    └─ arrival ETA 14:00 → latest_possible_checkout = 14:00
-  ├─ getPolicy("late checkout")
-  └─ branches
-       a) within cap                  → extendStay(new_departure ≤ 14:00)
-       b) guest wants 16:00           → CONFLICT; offer (i) hold only to 14:00,
+  â”œâ”€ getGuestContext(508)
+  â”œâ”€ getArrivals(room_no=508, date=today)
+  â”‚    â”œâ”€ no arrival that day â†’ extendStay() â†’ confirm
+  â”‚    â””â”€ arrival ETA 14:00 â†’ latest_possible_checkout = 14:00
+  â”œâ”€ getPolicy("late checkout")
+  â””â”€ branches
+       a) within cap                  â†’ extendStay(new_departure â‰¤ 14:00)
+       b) guest wants 16:00           â†’ CONFLICT; offer (i) hold only to 14:00,
                                         (ii) move to a vacant room for the afternoon,
                                         (iii) decline + goodwill
-       c) waive the fee               → applyComp(amount = LC fee, approver required)
+       c) waive the fee               â†’ applyComp(amount = LC fee, approver required)
 ```
 
 **Signed-off rule: the cap is the arrival ETA itself.** No turnover buffer is modelled.
 `latest_possible_checkout` is returned in the `CONFLICT` payload so the agent can offer
 the exact alternative rather than a vague no. If the property later needs a cleaning
-buffer, it becomes a policy rule — not a constant in code.
+buffer, it becomes a policy rule â€” not a constant in code.
 
 ### Proactive SLA alert  *(built)*
 
@@ -324,19 +324,19 @@ Agaro exposes both REST endpoints and both are wired up: `/speak` broadcasts tex
 through TTS with `INTERRUPT | APPEND | IGNORE` priority and is what makes a mid-session
 alert audible, while `/think` injects text as user input for the console's text box.
 
-### W5 — Shift handover  *(P0)*
+### W5 â€” Shift handover  *(P0)*
 
 ```
 trigger  "what do I need to know?"
-  └─ getShiftSummary()
-       → moves made, comps + approver, open tasks with minutes-to-SLA,
+  â””â”€ getShiftSummary()
+       â†’ moves made, comps + approver, open tasks with minutes-to-SLA,
          followups due, escalations pending, out-of-service rooms
-     read back in ≤ 20 seconds, ordered by urgency, nothing invented
+     read back in â‰¤ 20 seconds, ordered by urgency, nothing invented
 ```
 Read-only, no writes. This is the workflow that makes the product feel like a
 product: it has memory of its own shift.
 
-### W3 — Walk a guest  *(built)*
+### W3 â€” Walk a guest  *(built)*
 
 The last resort when no room can be found. Order: `findAvailableRooms` to prove
 nothing is free, `findPartnerHotel` for equal-or-better stock, `arrangeTransport`,
@@ -345,12 +345,12 @@ then `walkGuest`. The walk is role-gated: without `approved_by` it returns
 General Manager may authorise it. The reservation flips to `walked`, any assigned
 room is released dirty, and partner rate plus fare is recorded in `walks`.
 
-### W4 — Billing dispute  *(built)*
+### W4 â€” Billing dispute  *(built)*
 
 `getFolio` returns every posted line plus anything already reversed, so the agent
 argues from the actual bill rather than memory. `reverseCharge` corrects a line and
 is deliberately distinct from a comp: a reversal fixes revenue, a comp absorbs it.
-The `reversal` policy topic allows ₹1,500 at the desk and otherwise follows the same
+The `reversal` policy topic allows â‚¹1,500 at the desk and otherwise follows the same
 role ladder as comps. A line can only be reversed once.
 
 ---
@@ -358,11 +358,11 @@ role ladder as comps. A line can only be reversed once.
 ## 6. Agent design
 
 **Prompt structure** (four blocks, in this order):
-1. Identity & audience — duty manager, not guest; voice, not chat.
-2. Hard operating rules — look before acting, never invent policy, never claim
+1. Identity & audience â€” duty manager, not guest; voice, not chat.
+2. Hard operating rules â€” look before acting, never invent policy, never claim
    availability you didn't fetch, never self-approve.
-3. Tool discipline — one lookup before any write; confirm before multi-step execution.
-4. Voice style — short sentences, no field names, no "I have updated the database".
+3. Tool discipline â€” one lookup before any write; confirm before multi-step execution.
+4. Voice style â€” short sentences, no field names, no "I have updated the database".
 
 **Confirmation policy**
 
@@ -371,41 +371,41 @@ role ladder as comps. A line can only be reversed once.
 | Read-only lookup | no | no |
 | Room move | yes (room + guest) | no |
 | Task creation | no | no |
-| Comp ≤ ceiling | yes (amount + guest) | no |
+| Comp â‰¤ ceiling | yes (amount + guest) | no |
 | Comp > ceiling | yes (amount + ceiling + reason) | **yes** |
 | Escalation to GM | yes | **yes** |
-| Status → out_of_service | yes | no |
+| Status â†’ out_of_service | yes | no |
 
 **Latency tactics**
 - Tool payloads capped at 1 KB; never return the room list when two rooms answer the question.
-- Speak the plan while the next tool runs ("checking the fourth floor…").
+- Speak the plan while the next tool runs ("checking the fourth floorâ€¦").
 - Never chain more than 3 tools without a spoken progress sentence.
 - Pre-warm the agent connection before the demo; keep the tunnel alive.
 
 **Spoken vs visual division**
 Voice carries decisions and confirmations. The console carries numbers, history and
-status. Don't read the room board aloud; don't hide a ₹2,500 comp in a sentence.
+status. Don't read the room board aloud; don't hide a â‚¹2,500 comp in a sentence.
 
 ---
 
 ## 7. Console (information architecture)
 
-Single page, no build step, 1440×900 target, projector-legible.
+Single page, no build step, 1440Ã—900 target, projector-legible.
 
 | Region | Contents | Update |
 |---|---|---|
 | Header | property, shift window, occupancy, OOS, open tasks, comps total, mic status | 1 s |
-| Room board | floors 8→4, 8 rooms/row, status colour + housekeeping mark, click → drawer | 1 s |
+| Room board | floors 8â†’4, 8 rooms/row, status colour + housekeeping mark, click â†’ drawer | 1 s |
 | Task queue | department, room, priority, **SLA countdown**, owner | 1 s |
 | Activity timeline | every tool call: time, actor, action, outcome. Policy blocks in red | 1 s |
-| Approval panel | appears on `APPROVAL_REQUIRED`: amount, ceiling, rule code, guest. **Clickable and speakable** — the manager can say "yes, approve" or press Approve; both paths make the same server call with `approved_by` | event |
+| Approval panel | appears on `APPROVAL_REQUIRED`: amount, ceiling, rule code, guest. **Clickable and speakable** â€” the manager can say "yes, approve" or press Approve; both paths make the same server call with `approved_by` | event |
 | Metrics strip | median resolve time, comps applied vs blocked, SLA compliance % | 5 s |
-| Transport bar | mic connect, reset demo. **Text fallback deliberately cut** — see §11 | — |
+| Transport bar | mic connect, reset demo. **Text fallback deliberately cut** â€” see Â§11 | â€” |
 
 **Design constraints** (fed to `frontend-design`):
 - Density over decoration: the room board must fit without scrolling.
-- Colour is semantic only — occupied / vacant / out-of-service / blocked. No gradients.
-- Numerals must be readable at 3 m: ≥ 24 px for room numbers and amounts.
+- Colour is semantic only â€” occupied / vacant / out-of-service / blocked. No gradients.
+- Numerals must be readable at 3 m: â‰¥ 24 px for room numbers and amounts.
 - Motion only to signal state change (a room flipping status), never on load.
 - Empty and error states are written as direction, not mood.
 
@@ -418,14 +418,14 @@ build), card-everything SaaS kit, decorative gradients.
 
 | Concern | Decision |
 |---|---|
-| **Audit** | Append-only. Every write tool emits one row with `actor`. Comp rows carry `approved_by`. Immutable — no update/delete path. |
+| **Audit** | Append-only. Every write tool emits one row with `actor`. Comp rows carry `approved_by`. Immutable â€” no update/delete path. |
 | **Idempotency** | `request_id` on all money/move writes; duplicate returns original result. |
 | **Determinism** | Policy engine is pure; demo resets to identical state via `/api/reset`. |
 | **Recoverability** | Every failure returns a next step. No dead-end tool responses. |
-| **Fallback** | Pre-recorded demo video as the last resort. Typed input was cut: see §11. |
+| **Fallback** | Pre-recorded demo video as the last resort. Typed input was cut: see Â§11. |
 | **Observability** | Tool latency, status distribution, and failed calls logged to console. |
 | **Data safety** | SQLite file; nothing leaves the machine except audio to Agora and text to the LLM. |
-| **Shift clock** | `PO_SIM_HOUR` (0–23) pins the hour so time-of-day policy is reproducible regardless of when the demo runs. Unset = real clock. |
+| **Shift clock** | `PO_SIM_HOUR` (0â€“23) pins the hour so time-of-day policy is reproducible regardless of when the demo runs. Unset = real clock. |
 
 ---
 
@@ -435,11 +435,11 @@ build), card-everything SaaS kit, decorative gradients.
 |---|---|---|
 | **P1** (5h) | Schema rewrite + seed + policy engine + 14 tool stubs returning correct envelopes | `scripts/spec_tests.py` passes: rule evaluation, error semantics, idempotency |
 | **P2** (5h) | W1 + W2 fully wired; console room board + task queue + audit | Both workflows complete via HTTP, state visibly changes |
-| **P3** (4h) | Console redesign (design pass → build → guidelines review) + approval panel + metrics | Console passes accessibility review; board fits 1440×900 |
+| **P3** (4h) | Console redesign (design pass â†’ build â†’ guidelines review) + approval panel + metrics | Console passes accessibility review; board fits 1440Ã—900 |
 | **P4** (4h) | Voice loop end to end; latency tuning; W5 handover | Full three-workflow conversation with no manual intervention |
-| **P5** (5h) | Rehearsal ×10, fallback recording, README, roadmap slide | Submitted by 12:45 IST |
+| **P5** (5h) | Rehearsal Ã—10, fallback recording, README, roadmap slide | Submitted by 12:45 IST |
 
-**Cut order if behind:** text fallback → proactive SLA alert → W4 → W3 → MCP wrapper →
+**Cut order if behind:** text fallback â†’ proactive SLA alert â†’ W4 â†’ W3 â†’ MCP wrapper â†’
 metrics strip. Policy engine and audit are never cut.
 
 ---
@@ -450,7 +450,7 @@ metrics strip. Policy engine and audit are never cut.
 |---|---|---|
 | Murf not available as an Agora TTS vendor | **Blocks the voice layer** | Verify first; fallback TTS + note in README |
 | Agora cloud can't reach `localhost` | Tools never fire | Tunnel (`cloudflared`) from hour one, not hour ten |
-| LLM tool-call reliability | Broken demo | Short prompts, ≤14 tools, explicit enums, deterministic error envelopes |
+| LLM tool-call reliability | Broken demo | Short prompts, â‰¤14 tools, explicit enums, deterministic error envelopes |
 | Hall audio / ASR noise | Demo failure | Headset mic, short turns, text fallback, recorded video |
 | Scope creep from "complete product" | Nothing finishes | P0 list is frozen at sign-off; P1 only after P5 starts early |
 
@@ -462,11 +462,11 @@ metrics strip. Policy engine and audit are never cut.
 |---|---|---|
 | 1 | W2 conflict policy | **Cap the extension at the arrival ETA.** No turnover buffer. `CONFLICT` returns `latest_possible_checkout`. |
 | 2 | Approval parity | **Clickable and speakable.** Either path writes the same `approved_by` record. |
-| 3 | Shift identity | **Two-role staff table** (duty manager ₹5,000 / GM ₹25,000) plus a front desk at ₹750, so escalation and refusal are both demonstrable. |
+| 3 | Shift identity | **Two-role staff table** (duty manager â‚¹5,000 / GM â‚¹25,000) plus a front desk at â‚¹750, so escalation and refusal are both demonstrable. |
 | 4 | Tool count | **14 tools for P0, confirmed.** P1 tools stay out until P0 is green. |
-| 5 | Text input fallback | **Built.** `POST /api/text` → `agent_think` injects the text as user input; the console unlocks the input box on Connect. |
+| 5 | Text input fallback | **Built.** `POST /api/text` â†’ `agent_think` injects the text as user input; the console unlocks the input box on Connect. |
 | 6 | Tool count | **21.** The 14 specified, plus `declineApproval`, the three W3 tools, the two W4 tools, and `getAvailabilitySummary`. Agora caps an agent at 32, so there is room. |
-| 7 | Proactive SLA alert | **Built.** Alerts fire in the console, in the agent's opening line, and — via `agent_speak` — out loud mid-session when a task crosses its threshold. |
+| 7 | Proactive SLA alert | **Built.** Alerts fire in the console, in the agent's opening line, and â€” via `agent_speak` â€” out loud mid-session when a task crosses its threshold. |
 
 ## 12. Verification
 
@@ -474,7 +474,7 @@ metrics strip. Policy engine and audit are never cut.
 
 - every policy branch, including the same amount at 15:00 vs 23:40
 - authority override vs refusal (duty manager vs front desk)
-- escalation above ₹5,000
+- escalation above â‚¹5,000
 - `UNAVAILABLE`, `CONFLICT`, `NOT_FOUND` payload contracts
 - idempotency of `moveRoom` and `applyComp` on `request_id`
 - room cannot return to `vacant` with an open defect task

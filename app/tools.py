@@ -118,8 +118,10 @@ def getShiftSummary(scope: str = "shift") -> dict:
         parts.append(f"{len(comps)} compensation{'s' if len(comps) > 1 else ''} totalling {comp_total} rupees")
     if at_risk:
         first = at_risk[0]
-        parts.append(f"{len(at_risk)} task{'s' if len(at_risk) > 1 else ''} close to SLA breach, "
-                     f"{first['department']} on {first['location']} in {first['minutes_to_sla']} minutes")
+        parts.append(
+            f"{len(at_risk)} task{'s' if len(at_risk) > 1 else ''} close to SLA breach: "
+            f"{first['description']} ({first['department']}, {first['location']}), "
+            f"{first['minutes_to_sla']} minutes left")
     if oos:
         parts.append("out of service: " + ", ".join(r["room_no"] for r in oos))
     if walks:
@@ -150,13 +152,28 @@ def getRoom(room_no: str) -> dict:
             return fail("NOT_FOUND", f"No room called {room_no} in this property.",
                         hints={"next": ["findAvailableRooms"]})
         guest = _guest_or_none(conn, room["room_no"])
-    return ok(
-        f"Room {room['room_no']}, {room['category']} on floor {room['floor']}, "
-        f"{room['status'].replace('_', ' ')}.",
-        {"room": dict(room),
-         "guest": {"guest_id": guest["guest_id"], "name": guest["name"], "tier": guest["tier"]}
-         if guest else None},
-    )
+        tasks = _rows(conn.execute(
+            "SELECT task_id, department, priority, description, status, sla_due, assignee "
+            "FROM tasks WHERE location = ? AND status IN ('open','in_progress') "
+            "ORDER BY sla_due", (room["room_no"],)))
+
+    message = (f"Room {room['room_no']}, {room['category']} on floor {room['floor']}, "
+               f"{room['status'].replace('_', ' ')}.")
+    if guest:
+        message += f" {guest['name']} is in house."
+    if tasks:
+        first = tasks[0]
+        message += (f" Open task: {first['description']}"
+                    f" ({first['department']}, {first['priority']}).")
+        if len(tasks) > 1:
+            message += f" Plus {len(tasks) - 1} more."
+
+    return ok(message, {
+        "room": dict(room),
+        "guest": {"guest_id": guest["guest_id"], "name": guest["name"],
+                  "tier": guest["tier"]} if guest else None,
+        "tasks": tasks,
+    })
 
 
 def findAvailableRooms(category: str, floor: int | None = None,
@@ -916,8 +933,9 @@ def getRoster(query: str = "", min_authority_inr: int = 0) -> dict:
 
     people = []
     for row in rows:
-        haystack = " ".join(
-            str(row[k] or "") for k in ("name", "role", "department")).lower()
+        label = ROLE_LABEL.get(row["role"], row["role"])
+        haystack = " ".join(str(v or "") for v in
+                            (row["name"], row["role"], row["department"], label)).lower()
         if needle and needle not in haystack:
             continue
         if minimum and row["authority_inr"] < minimum:

@@ -447,7 +447,7 @@ def reset() -> dict:
 
 
 class Decision(BaseModel):
-    by: str = "R. Menon"
+    by: str = "Ravi Menon"
 
 
 @app.post("/api/approvals/{approval_id}/approve")
