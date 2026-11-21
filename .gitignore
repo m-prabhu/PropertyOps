@@ -25,3 +25,6 @@ Thumbs.db
 
 # agent notes, kept local
 AGENTS.md
+
+# local helper, not part of the product
+scripts/export_pdf.py
